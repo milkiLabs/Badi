@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
     const qt6zig = b.dependency("libqt6zig", .{
         .target = target,
         .optimize = .ReleaseFast,
-        .extra_paths = qt6_paths,
+        .@"extra-paths" = qt6_paths,
     });
 
     const exe = b.addExecutable(.{
