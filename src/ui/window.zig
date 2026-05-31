@@ -133,10 +133,10 @@ pub fn selectRelative(direction: i32) void {
 
     const current = currentModelRow() orelse 0;
     const next = if (direction < 0) blk: {
-        if (current == 0) return;
+        if (current == 0) break :blk len - 1;
         break :blk current - 1;
     } else blk: {
-        if (current + 1 >= len) return;
+        if (current + 1 >= len) break :blk 0;
         break :blk current + 1;
     };
 
