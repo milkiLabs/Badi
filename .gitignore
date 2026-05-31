@@ -2,3 +2,12 @@
 zig-out/
 zig-pkg/
 notes/
+
+# Arch package build directories & files
+aur/src/
+aur/pkg/
+aur/*.pkg.tar.*
+aur/*.tar.gz
+aur/badi*/
+aur/Badi/
+aur/Badi-*/
