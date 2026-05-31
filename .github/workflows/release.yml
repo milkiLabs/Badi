@@ -15,6 +15,9 @@ jobs:
         with:
           version: latest
 
+      - name: Install Qt6 dev packages
+        run: sudo apt-get update && sudo apt-get install -y qt6-base-dev
+
       - run: zig build -Doptimize=ReleaseFast
 
       - name: Upload artifact
