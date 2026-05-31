@@ -1,45 +1,22 @@
 # Maintainer: Your Name <youremail@domain.com>
 
-pkgname=badi-git
-pkgver=1.0.0.r2.gd42ab42
+pkgname=badi-bin
+pkgver=1.0.0
 pkgrel=1
 pkgdesc="A fast, keyboard-driven application launcher built with Zig and Qt."
 arch=('x86_64')
 url="https://github.com/milkiLabs/Badi"
 license=('unknown') # Please update this when a license is added to the project
 depends=('qt6-base' 'gcc-libs')
-makedepends=('zig' 'git')
 provides=('badi')
 conflicts=('badi')
-source=("git+https://github.com/milkiLabs/Badi.git")
-sha256sums=('SKIP')
-
-pkgver() {
-    cd Badi
-    # Generate version based on the latest git tag (e.g. 1.0.0.r2.gd42ab42)
-    git describe --long --tags 2>/dev/null | sed 's/\([^-]*-g\)/r\1/;s/-/./g;s/^v//' ||
-    printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
-}
-
-build() {
-    cd Badi
-    
-    # Use a local cache directory to prevent pollution of the build environment
-    zig build \
-        -Doptimize=ReleaseFast \
-        --global-cache-dir "$srcdir/zig-cache" \
-        --prefix "$srcdir/install"
-}
+source=("https://github.com/milkiLabs/Badi/releases/download/v${pkgver}/badi-linux-x86_64.tar.gz")
+sha256sums=('e625f3e30400ac3c2bda48ce94310dfd4a9d22f32d70b9ab5f7944ce87449f2e')
 
 package() {
-    cd Badi
+    # The tarball extracts a single file 'Badi' into srcdir
+    install -Dm755 "$srcdir/Badi" "$pkgdir/usr/bin/badi"
     
-    # Install the executable
-    install -Dm755 "$srcdir/install/bin/Badi" "$pkgdir/usr/bin/badi"
-    
-    # Optional: Install a desktop file if you create one later
-    # install -Dm644 badi.desktop "$pkgdir/usr/share/applications/badi.desktop"
-    
-    # Optional: Install the README as documentation
-    install -Dm644 README.md "$pkgdir/usr/share/doc/${pkgname%-git}/README.md"
+    # Optional: Install the README as documentation if you include it in the release archive in the future
+    # install -Dm644 "$srcdir/README.md" "$pkgdir/usr/share/doc/${pkgname%-bin}/README.md"
 }
