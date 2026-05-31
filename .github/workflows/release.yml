@@ -3,7 +3,7 @@ name: Release Build
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   build:
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,9 +19,9 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
-          target: 'desktop'
-          install-deps: 'true'
+          version: "6.8.3"
+          target: "desktop"
+          install-deps: "true"
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
@@ -36,7 +36,7 @@ jobs:
           path: zig-out/
 
       - name: Create Archive
-        run: tar -czvf badi-linux-x86_64.tar.gz -C zig-out/bin Badi
+        run: tar -czvf badi-linux-x86_64.tar.gz -C zig-out/bin badi
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
