@@ -1,0 +1,36 @@
+# Maintainer: Your Name <youremail@domain.com>
+
+pkgname=badi
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="A fast, keyboard-driven application launcher built with Zig and Qt."
+arch=('x86_64')
+url="https://github.com/milkiLabs/Badi"
+license=('unknown') # Please update this when a license is added to the project
+depends=('qt6-base' 'gcc-libs')
+makedepends=('zig' 'git')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/milkiLabs/Badi/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP') # Generate proper checksums later with `updpkgsums`
+
+build() {
+    cd "Badi-$pkgver"
+    
+    # Use a local cache directory to prevent pollution of the build environment
+    zig build \
+        -Doptimize=ReleaseFast \
+        --global-cache-dir "$srcdir/zig-cache" \
+        --prefix "$srcdir/install"
+}
+
+package() {
+    cd "Badi-$pkgver"
+    
+    # Install the executable
+    install -Dm755 "$srcdir/install/bin/Badi" "$pkgdir/usr/bin/badi"
+    
+    # Optional: Install a desktop file if you create one later
+    # install -Dm644 badi.desktop "$pkgdir/usr/share/applications/badi.desktop"
+    
+    # Optional: Install the README as documentation
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
