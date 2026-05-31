@@ -14,10 +14,49 @@ fn exitPrefixMode(app: *context.AppState) void {
     window.resetToMainList();
 }
 
+fn isUrl(text: []const u8) bool {
+    if (std.mem.startsWith(u8, text, "http://")) return true;
+    if (std.mem.startsWith(u8, text, "https://")) return true;
+    
+    if (std.mem.indexOfScalar(u8, text, ' ') != null) return false;
+    
+    if (std.mem.startsWith(u8, text, "localhost:")) return true;
+    if (std.mem.eql(u8, text, "localhost")) return true;
+
+    const last_dot = std.mem.lastIndexOfScalar(u8, text, '.') orelse return false;
+    if (last_dot == 0 or last_dot == text.len - 1) return false;
+    
+    const tld = text[last_dot + 1 ..];
+    if (tld.len < 2 or tld.len > 10) return false;
+    for (tld) |c| {
+        if (!std.ascii.isAlphabetic(c)) return false;
+    }
+    
+    if (std.mem.startsWith(u8, text, "www.")) return true;
+
+    const common_tlds = [_][]const u8{
+        "com", "org", "net", "io", "co", "dev", "app", "me", "ly", "xyz", "edu", "gov", "tv", "ai"
+    };
+    for (common_tlds) |t| {
+        if (std.ascii.eqlIgnoreCase(tld, t)) return true;
+    }
+    
+    return false;
+}
+
 /// Triggered whenever the user types in the QLineEdit.
 pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
     const app = context.state();
     const query: []const u8 = text[0..std.mem.len(text)];
+
+    // If we're in the dynamic URL prefix mode and the user backspaces the scheme/url, revert to apps mode.
+    if (app.mode == .prefix) {
+        if (std.mem.eql(u8, app.mode.prefix.name, "Browser")) {
+            if (!isUrl(query)) {
+                exitPrefixMode(app);
+            }
+        }
+    }
 
     // If we are in apps mode, check if the user typed a prefix trigger
     if (app.mode == .apps) {
@@ -33,6 +72,21 @@ pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
                 app.ui.input.SetPlaceholderText("Type to search or run...");
                 return;
             }
+        }
+
+        if (isUrl(query)) {
+            const has_scheme = std.mem.startsWith(u8, query, "http://") or std.mem.startsWith(u8, query, "https://");
+            app.mode = .{ .prefix = .{
+                .trigger = "",
+                .name = "Browser",
+                .icon = "🌐",
+                .action = if (has_scheme) "xdg-open %s" else "xdg-open https://%s",
+            } };
+            app.list_dirty = true;
+            app.ui.badge.SetText("🌐 Browser");
+            app.ui.badge.Show();
+            window.filterList(query);
+            return;
         }
     }
 
