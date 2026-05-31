@@ -106,41 +106,31 @@ pub fn score(query: []const u8, candidate: []const u8) Score {
     return -1;
 }
 
-/// Scores all items, filters matches (score >= 0), sorts by score descending,
-/// and returns up to `max_results` scored items. Caller owns the returned slice.
-pub fn search(items: []const []const u8, query: []const u8, allocator: std.mem.Allocator) ![]ScoredItem {
-    if (query.len == 0) {
-        const count = @min(items.len, max_results);
-        const result = try allocator.alloc(ScoredItem, count);
-        for (result, 0..) |*r, i| {
-            r.* = .{ .index = i, .score = 0 };
-        }
-        return result;
-    }
+/// Scores all items, filters matches (score >= 0), and writes up to
+/// `out.len` scored results into `out`, sorted by score descending.
+/// Returns the number of results written. Caller must not call search()
+/// with an empty query — empty queries are handled by the caller.
+pub fn search(items: []const []const u8, query: []const u8, out: []ScoredItem) usize {
+    std.debug.assert(query.len > 0);
 
-    var scored: std.ArrayListUnmanaged(ScoredItem) = .empty;
-    errdefer scored.deinit(allocator);
-
+    var count: usize = 0;
     for (items, 0..) |item, i| {
         const s = score(query, item);
-        if (s >= 0) {
-            try scored.append(allocator, .{ .index = i, .score = s });
+        if (s >= 0 and count < out.len) {
+            out[count] = .{ .index = i, .score = s };
+            count += 1;
         }
     }
 
     // Sort by score descending, then by index for stable ordering
-    std.mem.sort(ScoredItem, scored.items, {}, struct {
+    std.mem.sort(ScoredItem, out[0..count], {}, struct {
         fn cmp(_: void, a: ScoredItem, b: ScoredItem) bool {
             if (a.score != b.score) return a.score > b.score;
             return a.index < b.index;
         }
     }.cmp);
 
-    const limit = @min(scored.items.len, max_results);
-    const result = try allocator.alloc(ScoredItem, limit);
-    @memcpy(result, scored.items[0..limit]);
-    scored.deinit(allocator);
-    return result;
+    return count;
 }
 
 // --- Internal helpers ---
@@ -416,11 +406,10 @@ test "empty candidate returns -1" {
 
 test "search returns sorted by score" {
     const items = [_][]const u8{ "firefox", "file manager", "firefox developer edition" };
-    const allocator = std.testing.allocator;
-    const results = try search(&items, "fire", allocator);
-    defer allocator.free(results);
-    try std.testing.expect(results.len >= 2);
-    try std.testing.expect(results[0].score >= results[1].score);
+    var buf: [max_results]ScoredItem = undefined;
+    const n = search(&items, "fire", &buf);
+    try std.testing.expect(n >= 2);
+    try std.testing.expect(buf[0].score >= buf[1].score);
 }
 
 test "search caps at max_results" {
@@ -429,16 +418,15 @@ test "search caps at max_results" {
         _ = i;
         item.* = "test item";
     }
-    const allocator = std.testing.allocator;
-    const results = try search(&items, "test", allocator);
-    defer allocator.free(results);
-    try std.testing.expect(results.len <= max_results);
+    var buf: [max_results]ScoredItem = undefined;
+    const n = search(&items, "test", &buf);
+    try std.testing.expect(n <= max_results);
 }
 
-test "search empty query returns all items" {
+test "search writes into provided buffer" {
     const items = [_][]const u8{ "alpha", "beta", "gamma" };
-    const allocator = std.testing.allocator;
-    const results = try search(&items, "", allocator);
-    defer allocator.free(results);
-    try std.testing.expectEqual(@as(usize, 3), results.len);
+    var buf: [2]ScoredItem = undefined;
+    const n = search(&items, "a", &buf);
+    try std.testing.expect(n <= 2);
+    try std.testing.expect(n >= 1);
 }

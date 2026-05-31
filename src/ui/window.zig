@@ -102,36 +102,15 @@ pub fn filterList(query: []const u8) void {
         }
     } else {
         // Non-empty query: score, rank, and sort
-        switch (app.mode) {
-            .apps => {
-                const apps_ = app.apps();
-                // Build name pointers on the stack (max 1024 apps)
-                var name_buf: [1024][]const u8 = undefined;
-                const count = @min(apps_.len, name_buf.len);
-                for (apps_[0..count], 0..) |entry, i| {
-                    name_buf[i] = entry.name;
-                }
-                const results = search.search(name_buf[0..count], query, app.allocator) catch return;
-                defer app.allocator.free(results);
-                for (results) |r| {
-                    app.visible_indices.append(app.allocator, r.index) catch break;
-                }
-            },
-            .piped => {
-                const items = app.piped_items.items;
-                // Build name pointers on the stack
-                var name_buf: [4096][]const u8 = undefined;
-                const count = @min(items.len, name_buf.len);
-                for (items[0..count], 0..) |line, i| {
-                    name_buf[i] = line;
-                }
-                const results = search.search(name_buf[0..count], query, app.allocator) catch return;
-                defer app.allocator.free(results);
-                for (results) |r| {
-                    app.visible_indices.append(app.allocator, r.index) catch break;
-                }
-            },
-            .prefix => {},
+        var name_buf: [1024][]const u8 = undefined;
+        const count = buildNamePointers(app, &name_buf);
+
+        if (count > 0) {
+            var results_buf: [search.max_results]search.ScoredItem = undefined;
+            const n = search.search(name_buf[0..count], query, &results_buf);
+            for (results_buf[0..n]) |r| {
+                app.visible_indices.append(app.allocator, r.index) catch break;
+            }
         }
     }
 
@@ -302,4 +281,28 @@ fn resultCount() usize {
 fn prefixQuery() []const u8 {
     const app = context.state();
     return app.current_query.items;
+}
+
+/// Writes name pointers from the active source (apps or piped) into `buf`.
+/// Returns the number of pointers written.
+fn buildNamePointers(app: *context.AppState, buf: [][]const u8) usize {
+    switch (app.mode) {
+        .apps => {
+            const apps_ = app.apps();
+            const count = @min(apps_.len, buf.len);
+            for (apps_[0..count], 0..) |entry, i| {
+                buf[i] = entry.name;
+            }
+            return count;
+        },
+        .piped => {
+            const items = app.piped_items.items;
+            const count = @min(items.len, buf.len);
+            for (items[0..count], 0..) |line, i| {
+                buf[i] = line;
+            }
+            return count;
+        },
+        .prefix => return 0,
+    }
 }
