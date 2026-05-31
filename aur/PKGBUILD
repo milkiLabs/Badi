@@ -1,4 +1,4 @@
-# Maintainer: Your Name <youremail@domain.com>
+# Maintainer: Muhammad Atef <muhammadatefsw@gmail.com>
 
 pkgname=badi-bin
 pkgver=1.0.0
@@ -6,7 +6,7 @@ pkgrel=1
 pkgdesc="A fast, keyboard-driven application launcher built with Zig and Qt."
 arch=('x86_64')
 url="https://github.com/milkiLabs/Badi"
-license=('unknown') # Please update this when a license is added to the project
+license=('GPLv3')
 depends=('qt6-base' 'gcc-libs')
 provides=('badi')
 conflicts=('badi')
@@ -14,9 +14,9 @@ source=("https://github.com/milkiLabs/Badi/releases/download/v${pkgver}/badi-lin
 sha256sums=('e625f3e30400ac3c2bda48ce94310dfd4a9d22f32d70b9ab5f7944ce87449f2e')
 
 package() {
-    # The tarball extracts a single file 'Badi' into srcdir
-    install -Dm755 "$srcdir/Badi" "$pkgdir/usr/bin/badi"
-    
-    # Optional: Install the README as documentation if you include it in the release archive in the future
-    # install -Dm644 "$srcdir/README.md" "$pkgdir/usr/share/doc/${pkgname%-bin}/README.md"
+  # The tarball extracts a single file 'Badi' into srcdir
+  install -Dm755 "$srcdir/Badi" "$pkgdir/usr/bin/badi"
+
+  # Optional: Install the README as documentation if you include it in the release archive in the future
+  # install -Dm644 "$srcdir/README.md" "$pkgdir/usr/share/doc/${pkgname%-bin}/README.md"
 }

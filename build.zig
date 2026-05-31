@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const app_name = "Badi";
+    const app_name = "badi";
 
     const qt6_extra_path = b.option([]const u8, "qt6-extra-path", "Qt6 header search path") orelse "";
     const qt6_paths: []const []const u8 = if (qt6_extra_path.len > 0) &.{qt6_extra_path} else &.{};
