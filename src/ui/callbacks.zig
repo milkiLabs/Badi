@@ -89,10 +89,8 @@ pub fn onStdinActivated(notifier: qt6.QSocketNotifier, _: qt6.QSocketDescriptor,
         flushPendingStdinLine() catch {};
         notifier.SetEnabled(false);
         const app = context.state();
-        if (app.piped_items.items.len == 0) {
-            app.ui.no_results.SetText("No input");
-            app.ui.no_results.Show();
-        }
+        app.stdin_eof = true;
+        window.updateNoResults(app);
         return;
     }
 

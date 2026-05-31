@@ -1,6 +1,7 @@
 const std = @import("std");
 const qt6 = @import("libqt6zig");
 const context = @import("../context.zig");
+const search = @import("../core/search.zig");
 
 const display_role = qt6.qnamespace_enums.ItemDataRole.DisplayRole;
 
@@ -44,6 +45,35 @@ pub fn onModelData(_: qt6.QAbstractListModel, index: qt6.QModelIndex, role: i32)
     }
 }
 
+/// Sets the no_results label text and visibility based on current app state.
+/// Single source of truth — call after any state change that affects it.
+pub fn updateNoResults(app: *context.AppState) void {
+    if (app.mode == .prefix) {
+        app.ui.no_results.Hide();
+        return;
+    }
+
+    if (app.visible_indices.items.len > 0) {
+        app.ui.no_results.Hide();
+        return;
+    }
+
+    switch (app.mode) {
+        .apps => app.ui.no_results.SetText("No apps found"),
+        .piped => {
+            if (!app.stdin_eof) {
+                app.ui.no_results.SetText("Waiting for input...");
+            } else if (app.piped_items.items.len == 0) {
+                app.ui.no_results.SetText("No input");
+            } else {
+                app.ui.no_results.SetText("No results");
+            }
+        },
+        .prefix => unreachable,
+    }
+    app.ui.no_results.Show();
+}
+
 /// Recomputes the filtered source rows and asks Qt's model-view layer to repaint.
 pub fn filterList(query: []const u8) void {
     const app = context.state();
@@ -55,22 +85,54 @@ pub fn filterList(query: []const u8) void {
     app.visible_indices.clearRetainingCapacity();
     app.selected_index = null;
 
-    switch (app.mode) {
-        .apps => {
-            for (app.apps(), 0..) |entry, source_index| {
-                if (matches(entry.name, query)) {
+    if (query.len == 0) {
+        // Empty query: show all items in source order (no scoring)
+        switch (app.mode) {
+            .apps => {
+                for (app.apps(), 0..) |_, source_index| {
                     app.visible_indices.append(app.allocator, source_index) catch break;
                 }
-            }
-        },
-        .piped => {
-            for (app.piped_items.items, 0..) |line, source_index| {
-                if (matches(line, query)) {
+            },
+            .piped => {
+                for (app.piped_items.items, 0..) |_, source_index| {
                     app.visible_indices.append(app.allocator, source_index) catch break;
                 }
-            }
-        },
-        .prefix => {},
+            },
+            .prefix => {},
+        }
+    } else {
+        // Non-empty query: score, rank, and sort
+        switch (app.mode) {
+            .apps => {
+                const apps_ = app.apps();
+                // Build name pointers on the stack (max 1024 apps)
+                var name_buf: [1024][]const u8 = undefined;
+                const count = @min(apps_.len, name_buf.len);
+                for (apps_[0..count], 0..) |entry, i| {
+                    name_buf[i] = entry.name;
+                }
+                const results = search.search(name_buf[0..count], query, app.allocator) catch return;
+                defer app.allocator.free(results);
+                for (results) |r| {
+                    app.visible_indices.append(app.allocator, r.index) catch break;
+                }
+            },
+            .piped => {
+                const items = app.piped_items.items;
+                // Build name pointers on the stack
+                var name_buf: [4096][]const u8 = undefined;
+                const count = @min(items.len, name_buf.len);
+                for (items[0..count], 0..) |line, i| {
+                    name_buf[i] = line;
+                }
+                const results = search.search(name_buf[0..count], query, app.allocator) catch return;
+                defer app.allocator.free(results);
+                for (results) |r| {
+                    app.visible_indices.append(app.allocator, r.index) catch break;
+                }
+            },
+            .prefix => {},
+        }
     }
 
     const has_results = switch (app.mode) {
@@ -78,12 +140,8 @@ pub fn filterList(query: []const u8) void {
         else => app.visible_indices.items.len > 0,
     };
 
-    if (has_results) {
-        app.selected_index = 0;
-        app.ui.no_results.Hide();
-    } else {
-        app.ui.no_results.Show();
-    }
+    if (has_results) app.selected_index = 0;
+    updateNoResults(app);
 
     app.ui.model.EndResetModel();
     if (has_results) selectModelRow(0);
@@ -116,9 +174,31 @@ pub fn appendPipedItem(line: []const u8) !void {
 
     const query = app.ui.input.Text(app.allocator);
     defer app.allocator.free(query);
-    if (!matches(line, query)) return;
 
-    try app.visible_indices.append(app.allocator, app.piped_items.items.len - 1);
+    const source_index = app.piped_items.items.len - 1;
+
+    if (query.len == 0) {
+        // Empty query: append at end (source order)
+        try app.visible_indices.append(app.allocator, source_index);
+    } else {
+        // Score and insert at sorted position
+        const s = search.score(query, line);
+        if (s < 0) return; // doesn't match
+
+        // Find insertion point: keep visible_indices sorted by score descending.
+        // We need to re-score items to find the right position since
+        // visible_indices only stores indices, not scores.
+        var insert_pos = app.visible_indices.items.len;
+        for (app.visible_indices.items, 0..) |vis_idx, pos| {
+            const existing_text = app.piped_items.items[vis_idx];
+            const existing_score = search.score(query, existing_text);
+            if (s > existing_score) {
+                insert_pos = pos;
+                break;
+            }
+        }
+        try app.visible_indices.insert(app.allocator, insert_pos, source_index);
+    }
     if (app.selected_index == null) app.selected_index = 0;
 }
 
@@ -129,13 +209,8 @@ pub fn renderPipedAppendBatch() void {
     app.ui.model.BeginResetModel();
     app.ui.model.EndResetModel();
 
-    if (app.visible_indices.items.len == 0) {
-        app.ui.no_results.Show();
-        return;
-    }
-
-    app.ui.no_results.Hide();
-    selectModelRow(app.selected_index orelse 0);
+    updateNoResults(app);
+    if (app.visible_indices.items.len > 0) selectModelRow(app.selected_index orelse 0);
 }
 
 pub fn syncSelectionFromIndex(index: qt6.QModelIndex) void {
@@ -227,8 +302,4 @@ fn resultCount() usize {
 fn prefixQuery() []const u8 {
     const app = context.state();
     return app.current_query.items;
-}
-
-fn matches(text: []const u8, query: []const u8) bool {
-    return query.len == 0 or std.ascii.indexOfIgnoreCase(text, query) != null;
 }

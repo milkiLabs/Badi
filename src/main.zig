@@ -122,6 +122,7 @@ pub fn main(init: std.process.Init) !u8 {
         .current_query = current_query,
         .visible_indices = visible_indices,
         .selected_index = null,
+        .stdin_eof = false,
     };
     // Register the state so callbacks can reach it via context.state().
     context.setActive(&app_state);
@@ -137,8 +138,7 @@ pub fn main(init: std.process.Init) !u8 {
     input.SetFocus();
     if (is_piped) {
         // Piped: show immediately, stream lines via QSocketNotifier.
-        no_results.SetText("Waiting for input...");
-        no_results.Show();
+        window.updateNoResults(&app_state);
         main_widget.Show();
 
         // Async stdin: lets the GUI stay responsive while waiting for piped input — fires onStdinActivated when data arrives.
@@ -147,7 +147,6 @@ pub fn main(init: std.process.Init) !u8 {
     } else {
         // Apps: data already loaded — populate list, then show.
         window.filterList("");
-        no_results.Hide();
         main_widget.Show();
     }
 

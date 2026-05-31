@@ -51,6 +51,7 @@ pub const AppState = struct {
     current_query: std.ArrayList(u8),
     visible_indices: std.ArrayList(usize), // filtered source rows currently selectable
     selected_index: ?usize, // index into visible_indices, not the Qt row
+    stdin_eof: bool, // true once stdin signals EOF (pipe closed)
 
     pub fn apps(self: *const AppState) []const DesktopEntry {
         if (self.app_list) |list| return list.entries;
