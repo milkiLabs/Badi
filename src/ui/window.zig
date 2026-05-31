@@ -102,15 +102,18 @@ pub fn filterList(query: []const u8) void {
         }
     } else {
         // Non-empty query: score, rank, and sort
-        var name_buf: [1024][]const u8 = undefined;
-        const count = buildNamePointers(app, &name_buf);
-
-        if (count > 0) {
-            var results_buf: [search.max_results]search.ScoredItem = undefined;
-            const n = search.search(name_buf[0..count], query, &results_buf);
-            for (results_buf[0..n]) |r| {
-                app.visible_indices.append(app.allocator, r.index) catch break;
-            }
+        var results_buf: [search.max_results]search.ScoredItem = undefined;
+        const n = switch (app.mode) {
+            .piped => search.search(app.piped_items.items, query, &results_buf),
+            .apps => blk: {
+                var name_buf: [1024][]const u8 = undefined;
+                const count = buildNamePointers(app, &name_buf);
+                break :blk if (count > 0) search.search(name_buf[0..count], query, &results_buf) else 0;
+            },
+            .prefix => 0,
+        };
+        for (results_buf[0..n]) |r| {
+            app.visible_indices.append(app.allocator, r.index) catch break;
         }
     }
 

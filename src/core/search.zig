@@ -1,139 +1,63 @@
-// Fuzzy search with hierarchical scoring.
-//
-// Provides typo-tolerant, relevance-ranked search for app names and piped
-// input lines. Adapted from the QueryRanker algorithm in the milki launcher.
-//
-// Scoring hierarchy (highest to lowest):
-//   Exact > Prefix > Word prefix > Contains > Acronym > Token > Typo > Subsequence
-//
-// Pure Zig — no Qt dependencies.
-
 const std = @import("std");
 
 pub const ScoredItem = struct {
     index: usize,
-    score: i32,
+    score: i64,
 };
 
-const Score = i32;
-
-const exact_match: Score = 10_000;
-const prefix_match: Score = 9_000;
-const word_prefix_match: Score = 8_500;
-const contains_match: Score = 7_500;
-const acronym_match: Score = 7_000;
-const token_match: Score = 6_700;
-const typo_match: Score = 5_900;
-const subsequence_match: Score = 5_400;
-
-const prefix_quality_max: Score = 100;
-const typo_distance_penalty: Score = 160;
-const min_subsequence_length = 2;
-const min_typo_length = 3;
-const long_query_min_length = 6;
 pub const max_results = 50;
 
-const TokenPos = struct {
-    start: usize,
-    end: usize,
-};
-
-// --- Public API ---
-
-/// Returns the fuzzy match score for `query` against `candidate`.
-/// Returns -1 if no match.
-pub fn score(query: []const u8, candidate: []const u8) Score {
+/// Score `query` against `candidate`.
+/// Returns >= 0 if it matches (higher = better), -1 if no match.
+pub fn score(query: []const u8, candidate: []const u8) i64 {
     if (query.len == 0 or candidate.len == 0) return -1;
 
-    var q_buf: [128]u8 = undefined;
-    const q = normalize(query, &q_buf) orelse return -1;
-    var c_buf: [256]u8 = undefined;
-    const c = normalize(candidate, &c_buf) orelse return -1;
-
+    var qbuf: [128]u8 = undefined;
+    var cbuf: [256]u8 = undefined;
+    const q = normalize(query, &qbuf) orelse return -1;
+    const c = normalize(candidate, &cbuf) orelse return -1;
     if (q.len == 0) return -1;
 
-    // 1. Exact match
-    if (std.mem.eql(u8, q, c)) return exact_match;
-
-    // 2. Prefix match
-    if (std.mem.startsWith(u8, c, q)) {
-        return prefix_match + prefixQuality(c, q);
-    }
-
-    // 3. Word prefix match (query at a word boundary)
-    if (wordPrefixMatch(c, q)) {
-        return word_prefix_match + prefixQuality(c, q);
-    }
-
-    // 4. Contains match
+    // Direct substring match (single token)
     if (std.mem.indexOf(u8, c, q)) |pos| {
-        return contains_match - @as(Score, @intCast(pos));
+        return @as(i64, @intCast(10000 - pos));
     }
 
-    // 5. Acronym match
-    var abuf: [128]u8 = undefined;
-    const acronym = buildAcronym(c, &abuf);
-    if (acronym.len > 0 and std.mem.startsWith(u8, acronym, q)) {
-        return acronym_match;
-    }
+    // Multi-token: each space-separated piece must appear in order
+    if (tokenScore(q, c)) |s| return s;
 
-    // 6. Token match (all space-separated query tokens found)
-    {
-        var q_tokens_buf: [16]TokenPos = undefined;
-        const q_token_count = tokenize(q, &q_tokens_buf);
-        if (q_token_count > 1) {
-            var all_covered = true;
-            for (q_tokens_buf[0..q_token_count]) |tp| {
-                if (!tokenCovered(tokenAt(q, tp), c, acronym)) {
-                    all_covered = false;
-                    break;
-                }
-            }
-            if (all_covered) return token_match;
-        }
-    }
-
-    // 7. Typo match (Levenshtein)
-    if (q.len >= min_typo_length) {
-        if (typoScore(q, c)) |s| return s;
-    }
-
-    // 8. Subsequence match
-    if (q.len >= min_subsequence_length and isSubsequence(q, c)) {
-        return subsequence_match - subsequenceSpread(q, c);
-    }
+    // Acronym: query is prefix of the first-letter acronym
+    if (acronymScore(q, c)) |s| return s;
 
     return -1;
 }
 
-/// Scores all items, filters matches (score >= 0), and writes up to
-/// `out.len` scored results into `out`, sorted by score descending.
-/// Returns the number of results written. Caller must not call search()
-/// with an empty query — empty queries are handled by the caller.
+/// Score all items, return up to `out.len` sorted by score descending.
 pub fn search(items: []const []const u8, query: []const u8, out: []ScoredItem) usize {
     std.debug.assert(query.len > 0);
 
     var count: usize = 0;
     for (items, 0..) |item, i| {
         const s = score(query, item);
-        if (s >= 0 and count < out.len) {
-            out[count] = .{ .index = i, .score = s };
-            count += 1;
+        if (s >= 0) {
+            if (count < out.len) {
+                out[count] = .{ .index = i, .score = s };
+                count += 1;
+            }
         }
     }
 
-    // Sort by score descending, then by index for stable ordering
     std.mem.sort(ScoredItem, out[0..count], {}, struct {
-        fn cmp(_: void, a: ScoredItem, b: ScoredItem) bool {
+        fn desc(_: void, a: ScoredItem, b: ScoredItem) bool {
             if (a.score != b.score) return a.score > b.score;
             return a.index < b.index;
         }
-    }.cmp);
+    }.desc);
 
     return count;
 }
 
-// --- Internal helpers ---
+// --- Internals ---
 
 fn normalize(text: []const u8, buf: []u8) ?[]const u8 {
     if (text.len > buf.len) return null;
@@ -143,30 +67,47 @@ fn normalize(text: []const u8, buf: []u8) ?[]const u8 {
     return buf[0..text.len];
 }
 
-fn prefixQuality(text: []const u8, query: []const u8) Score {
-    const diff = @as(Score, @intCast(text.len)) - @as(Score, @intCast(query.len));
-    return @max(0, prefix_quality_max - diff);
-}
+/// Multi-token: split query on whitespace, each token must appear as a
+/// substring after the previous token's position.
+fn tokenScore(q: []const u8, c: []const u8) ?i64 {
+    var total_pos: i64 = 0;
+    var search_start: usize = 0;
+    var first_pos: ?usize = null;
 
-fn wordPrefixMatch(text: []const u8, query: []const u8) bool {
-    if (text.len < query.len) return false;
     var i: usize = 0;
-    while (i <= text.len - query.len) : (i += 1) {
-        const at_boundary = i == 0 or !std.ascii.isAlphanumeric(text[i - 1]);
-        if (at_boundary and std.mem.eql(u8, text[i .. i + query.len], query)) {
-            return true;
-        }
+    while (i < q.len) {
+        while (i < q.len and isSpace(q[i])) : (i += 1) {}
+        if (i >= q.len) break;
+        const tok_start = i;
+        while (i < q.len and !isSpace(q[i])) : (i += 1) {}
+        const token = q[tok_start..i];
+
+        const pos = std.mem.indexOf(u8, c[search_start..], token) orelse return null;
+        const abs_pos = search_start + pos;
+        if (first_pos == null) first_pos = abs_pos;
+        total_pos += @as(i64, @intCast(abs_pos));
+        search_start = abs_pos + 1;
     }
-    return false;
+
+    // Single-token case already handled by the direct substring check above,
+    // so if we get here with one token, the query must have been split on a
+    // non-space separator (unlikely for our tokenizer). Return early anyway.
+    // For multi-token: score drops as positions increase and spread grows.
+    const first = @as(i64, @intCast(first_pos orelse return null));
+    const spread = total_pos - first;
+    return 9000 - first - spread;
 }
 
-fn buildAcronym(text: []const u8, buf: []u8) []const u8 {
+/// Acronym match: build first-letter acronym of candidate, check if query
+/// is a prefix of it.
+fn acronymScore(q: []const u8, c: []const u8) ?i64 {
+    var buf: [128]u8 = undefined;
     var len: usize = 0;
     var boundary = true;
-    for (text) |c| {
-        if (std.ascii.isAlphanumeric(c)) {
+    for (c) |ch| {
+        if (std.ascii.isAlphanumeric(ch)) {
             if (boundary and len < buf.len) {
-                buf[len] = c;
+                buf[len] = ch;
                 len += 1;
             }
             boundary = false;
@@ -174,259 +115,105 @@ fn buildAcronym(text: []const u8, buf: []u8) []const u8 {
             boundary = true;
         }
     }
-    return buf[0..len];
-}
-
-fn tokenize(text: []const u8, tokens_buf: []TokenPos) usize {
-    var count: usize = 0;
-    var start: ?usize = null;
-    for (text, 0..) |c, i| {
-        if (std.ascii.isAlphanumeric(c)) {
-            if (start == null) start = i;
-        } else if (start) |s| {
-            if (count < tokens_buf.len) {
-                tokens_buf[count] = .{ .start = s, .end = i };
-                count += 1;
-            }
-            start = null;
-        }
+    const acr = buf[0..len];
+    if (acr.len >= q.len and std.mem.eql(u8, acr[0..q.len], q)) {
+        return 5000;
     }
-    if (start) |s| {
-        if (count < tokens_buf.len) {
-            tokens_buf[count] = .{ .start = s, .end = text.len };
-            count += 1;
-        }
-    }
-    return count;
+    return null;
 }
 
-fn tokenAt(text: []const u8, pos: TokenPos) []const u8 {
-    return text[pos.start..pos.end];
-}
-
-fn tokenCovered(token: []const u8, text: []const u8, acronym: []const u8) bool {
-    if (std.mem.indexOf(u8, text, token) != null) return true;
-    if (acronym.len >= token.len and std.mem.startsWith(u8, acronym, token)) return true;
-    if (token.len >= min_typo_length) {
-        if (bestTokenDistance(token, text) != null) return true;
-    }
-    return false;
-}
-
-fn isSubsequence(query: []const u8, text: []const u8) bool {
-    if (query.len > text.len) return false;
-    var qi: usize = 0;
-    var ti: usize = 0;
-    while (qi < query.len and ti < text.len) {
-        if (query[qi] == text[ti]) qi += 1;
-        ti += 1;
-    }
-    return qi == query.len;
-}
-
-fn subsequenceSpread(query: []const u8, text: []const u8) Score {
-    var qi: usize = 0;
-    var first: ?usize = null;
-    var last: usize = 0;
-    for (text, 0..) |c, i| {
-        if (qi < query.len and c == query[qi]) {
-            if (first == null) first = i;
-            last = i;
-            qi += 1;
-        }
-    }
-    if (first == null) return @intCast(text.len);
-    return @as(Score, @intCast(last)) - @as(Score, @intCast(first.?)) - @as(Score, @intCast(query.len));
-}
-
-fn maxEditDistance(query_len: usize) i32 {
-    if (query_len >= long_query_min_length) return 2;
-    if (query_len >= min_typo_length) return 1;
-    return 0;
-}
-
-fn typoScore(query: []const u8, text: []const u8) ?Score {
-    const best = bestTokenDistance(query, text) orelse return null;
-    const max_d = maxEditDistance(query.len);
-    if (best > max_d) return null;
-    const len_diff = if (text.len > query.len)
-        @as(Score, @intCast(text.len - query.len))
-    else
-        @as(Score, @intCast(query.len - text.len));
-    return typo_match - (best * typo_distance_penalty) - len_diff;
-}
-
-fn bestTokenDistance(query: []const u8, text: []const u8) ?i32 {
-    var tokens_buf: [16]TokenPos = undefined;
-    const count = tokenize(text, &tokens_buf);
-    if (count == 0) return null;
-
-    const max_d = maxEditDistance(query.len);
-    var best: i32 = std.math.maxInt(i32);
-    for (tokens_buf[0..count]) |tp| {
-        const token = tokenAt(text, tp);
-        const len_diff = if (query.len > token.len)
-            query.len - token.len
-        else
-            token.len - query.len;
-        if (len_diff <= @as(usize, @intCast(max_d))) {
-            const d = levenshtein(query, token);
-            if (d < best) best = d;
-        }
-    }
-    if (best == std.math.maxInt(i32)) return null;
-    return best;
-}
-
-fn levenshtein(a: []const u8, b: []const u8) i32 {
-    if (std.mem.eql(u8, a, b)) return 0;
-    if (a.len == 0) return @intCast(b.len);
-    if (b.len == 0) return @intCast(a.len);
-
-    const m = b.len;
-    if (m + 1 > 128) return @intCast(a.len + b.len);
-
-    var bufs: [2][128]i32 = undefined;
-    var prev_idx: usize = 0;
-
-    // Initialize row 0
-    for (0..m + 1) |j| {
-        bufs[0][j] = @intCast(j);
-    }
-
-    for (0..a.len) |i| {
-        const curr_idx = prev_idx ^ 1;
-        bufs[curr_idx][0] = @intCast(i + 1);
-        for (0..m) |j| {
-            const cost: i32 = if (a[i] == b[j]) 0 else 1;
-            bufs[curr_idx][j + 1] = @min(bufs[curr_idx][j] + 1, bufs[prev_idx][j + 1] + 1, bufs[prev_idx][j] + cost);
-        }
-        prev_idx = curr_idx;
-    }
-
-    return bufs[prev_idx][m];
+fn isSpace(c: u8) bool {
+    return c == ' ' or c == '\t' or c == '\n' or c == '\r';
 }
 
 // --- Tests ---
 
 test "exact match" {
-    try std.testing.expectEqual(exact_match, score("firefox", "firefox"));
-    try std.testing.expectEqual(exact_match, score("Firefox", "firefox"));
-    try std.testing.expectEqual(exact_match, score("FIREFOX", "Firefox"));
+    try std.testing.expectEqual(10000, score("firefox", "firefox"));
 }
 
-test "prefix match beats contains" {
-    const p = score("fir", "firefox");
-    const c = score("ire", "firefox");
-    try std.testing.expect(p > c);
-    try std.testing.expect(p >= prefix_match);
+test "case insensitive" {
+    try std.testing.expectEqual(10000, score("Firefox", "firefox"));
+    try std.testing.expectEqual(10000, score("FIREFOX", "Firefox"));
 }
 
-test "prefix quality — shorter name wins" {
-    const short = score("fire", "firefox");
-    const long_ = score("fire", "firefox developer edition");
-    try std.testing.expect(short > long_);
+test "prefix match beats later position" {
+    const prefix = score("fire", "firefox");
+    const later = score("fox", "firefox");
+    try std.testing.expect(prefix > later);
 }
 
-test "word prefix beats generic contains" {
-    const wp = score("map", "google maps");
-    // "map" at word boundary in "google maps" → word_prefix
-    // "map" inside "imap connection" (not at word boundary) → contains only
-    const c = score("map", "imap connection");
-    try std.testing.expect(wp >= word_prefix_match);
-    try std.testing.expect(c < word_prefix_match);
-}
-
-test "contains match with position penalty" {
-    const early = score("ire", "firefox");
-    const late = score("ire", "xfirefox");
-    try std.testing.expect(early > late);
-}
-
-test "acronym match" {
-    try std.testing.expectEqual(acronym_match, score("gm", "google maps"));
-    try std.testing.expectEqual(acronym_match, score("wc", "word counter"));
-    // "ff" matches acronym of "fast fox" → "ff"
-    try std.testing.expectEqual(acronym_match, score("ff", "fast fox"));
-}
-
-test "token match — multi-word query" {
-    const s = score("web cam", "web camera");
-    try std.testing.expect(s >= token_match);
-}
-
-test "typo tolerance — 1 edit short query" {
-    // "fireox" → "firefo" (missing 'f') = 1 edit, len 6 → max 2 edits
-    const s = score("fireox", "firefox");
-    try std.testing.expect(s > 0);
-    // Also test with a direct 1-edit case
-    const s2 = score("firefho", "firefox");
-    try std.testing.expect(s2 > 0);
-}
-
-test "typo tolerance — 2 edits long query" {
-    // "firefoox" → "firefox" = 1 edit (insert 'o'), len 8 → max 2 edits
-    const s = score("firefoox", "firefox");
-    try std.testing.expect(s > 0);
-}
-
-test "no typo tolerance for very short queries" {
-    // "xz" is too short (2 chars) for typo tolerance and doesn't match "firefox" at any tier
-    try std.testing.expectEqual(@as(i32, -1), score("xz", "firefox"));
-}
-
-test "subsequence match" {
-    const s = score("ffx", "firefox");
-    try std.testing.expect(s > 0);
-    // f,f,x found in order at positions 0,3,6 → spread=3
-    try std.testing.expect(s == subsequence_match - 3);
-}
-
-test "subsequence spread penalty" {
-    // "ffx" in "ffxtools" (tight: f(0),f(1),x(2)) vs "fabcd eff abcx" (spread: f(0),f(7),x(14))
-    const tight = score("ffx", "ffxtools");
-    const spread = score("ffx", "fabcd eff abcx");
-    try std.testing.expect(tight > 0);
-    try std.testing.expect(spread > 0);
-    try std.testing.expect(tight > spread);
+test "contains match at various positions" {
+    try std.testing.expectEqual(10000, score("fire", "firefox"));
+    try std.testing.expectEqual(9999, score("iref", "firefox")); // pos 1
+    try std.testing.expectEqual(9997, score("efox", "firefox")); // pos 3
 }
 
 test "no match returns -1" {
-    try std.testing.expectEqual(@as(i32, -1), score("xyz", "firefox"));
-    try std.testing.expectEqual(@as(i32, -1), score("zzz", "abc"));
+    try std.testing.expectEqual(@as(i64, -1), score("xyz", "firefox"));
+    try std.testing.expectEqual(@as(i64, -1), score("zzz", "abc"));
 }
 
 test "empty query returns -1" {
-    try std.testing.expectEqual(@as(i32, -1), score("", "firefox"));
+    try std.testing.expectEqual(@as(i64, -1), score("", "firefox"));
 }
 
 test "empty candidate returns -1" {
-    try std.testing.expectEqual(@as(i32, -1), score("fir", ""));
+    try std.testing.expectEqual(@as(i64, -1), score("fire", ""));
+}
+
+test "multi-token matching" {
+    const s = score("web cam", "web camera");
+    try std.testing.expect(s >= 0);
+    try std.testing.expect(s > score("cam web", "web camera"));
+}
+
+test "multi-token out of order" {
+    try std.testing.expectEqual(@as(i64, -1), score("cam web", "web camera"));
+}
+
+test "acronym match" {
+    try std.testing.expectEqual(5000, score("gm", "google maps"));
+    try std.testing.expectEqual(5000, score("wc", "word counter"));
+    try std.testing.expectEqual(5000, score("ff", "fast fox"));
+}
+
+test "acronym longer than query" {
+    // "g" matches "google maps" as a substring (pos 0), which is stronger than acronym
+    try std.testing.expectEqual(10000, score("g", "google maps"));
 }
 
 test "search returns sorted by score" {
-    const items = [_][]const u8{ "firefox", "file manager", "firefox developer edition" };
+    const items = [_][]const u8{ "aaa", "bbb file", "aaa file" };
     var buf: [max_results]ScoredItem = undefined;
-    const n = search(&items, "fire", &buf);
-    try std.testing.expect(n >= 2);
-    try std.testing.expect(buf[0].score >= buf[1].score);
+    const n = search(&items, "aaa", &buf);
+    try std.testing.expectEqual(@as(usize, 2), n);
+    try std.testing.expectEqual(@as(usize, 0), buf[0].index); // "aaa" at pos 0
+    try std.testing.expectEqual(@as(usize, 2), buf[1].index); // "aaa file" at pos 0 too, but higher index
 }
 
 test "search caps at max_results" {
     var items: [60][]const u8 = undefined;
-    for (&items, 0..) |*item, i| {
-        _ = i;
-        item.* = "test item";
-    }
+    for (&items) |*item| item.* = "test item";
     var buf: [max_results]ScoredItem = undefined;
     const n = search(&items, "test", &buf);
     try std.testing.expect(n <= max_results);
 }
 
-test "search writes into provided buffer" {
-    const items = [_][]const u8{ "alpha", "beta", "gamma" };
-    var buf: [2]ScoredItem = undefined;
-    const n = search(&items, "a", &buf);
-    try std.testing.expect(n <= 2);
-    try std.testing.expect(n >= 1);
+test "summit matches summits path" {
+    const path = "/media/Maind/كتب/Summitt's Fundamentals of Operative Dentistry A Contemporary Approach - Chapter 7.pdf";
+    try std.testing.expect(score("summit", path) >= 0);
+}
+
+test "dental matches dental path" {
+    const path = "/media/Maind/Dental_books/operative/Summitt's Fundamentals of Operative Dentistry.pdf";
+    try std.testing.expect(score("dental", path) >= 0);
+}
+
+test "single-token direct match takes priority" {
+    // "ff" matches "fast fox" via acronym, but also appears as substring in "coffee"
+    const sub = score("ff", "coffee");
+    const acr = score("ff", "fast fox");
+    try std.testing.expect(sub >= 0);
+    try std.testing.expectEqual(5000, acr);
 }
