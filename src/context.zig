@@ -37,7 +37,8 @@ pub const AppState = struct {
         main: qt6.QWidget,
         badge: qt6.QLabel,
         input: qt6.QLineEdit,
-        list: qt6.QListWidget,
+        list: qt6.QListView,
+        model: qt6.QAbstractListModel,
         no_results: qt6.QLabel,
     },
 
@@ -47,6 +48,7 @@ pub const AppState = struct {
     piped_items: std.ArrayList([]const u8), // owned strings from stdin
     stdin_pending: std.ArrayList(u8), // raw bytes awaiting a newline
     prefixes: std.ArrayList(Action),
+    current_query: std.ArrayList(u8),
     visible_indices: std.ArrayList(usize), // filtered source rows currently selectable
     selected_index: ?usize, // index into visible_indices, not the Qt row
 
@@ -61,6 +63,7 @@ pub const AppState = struct {
         self.piped_items.deinit(self.allocator);
         self.stdin_pending.deinit(self.allocator);
         self.prefixes.deinit(self.allocator);
+        self.current_query.deinit(self.allocator);
         self.visible_indices.deinit(self.allocator);
         active_state = null;
     }

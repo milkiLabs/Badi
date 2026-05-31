@@ -46,6 +46,8 @@ pub fn build(b: *std.Build) void {
     // Link the libqt6zig static libraries
     const qtlibs = &[_][]const u8{
         "qabstractbutton",
+        "qabstractitemmodel",
+        "qabstractitemview",
         "qapplication",
         "qboxlayout",
         "qcoreevent",
@@ -54,7 +56,6 @@ pub fn build(b: *std.Build) void {
         "qlayout",
         "qlineedit",
         "qlistview",
-        "qlistwidget",
         "qprocess",
         "qsocketnotifier",
         "qvariant",

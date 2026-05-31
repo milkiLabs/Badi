@@ -116,20 +116,20 @@ pub fn generateQss(allocator: std.mem.Allocator, t: Theme) ![]const u8 {
         \\QLineEdit::placeholder {{
         \\    color: {s};
         \\}}
-        \\QListWidget {{
+        \\QListView {{
         \\    background-color: transparent;
         \\    border: none;
         \\    outline: none;
         \\}}
-        \\QListWidget::item {{
+        \\QListView::item {{
         \\    padding: {d}px;
         \\    border-radius: {d}px;
         \\}}
-        \\QListWidget::item:selected {{
+        \\QListView::item:selected {{
         \\    background-color: {s};
         \\    color: {s};
         \\}}
-        \\QListWidget::item:hover {{
+        \\QListView::item:hover {{
         \\    background-color: {s};
         \\}}
     ;

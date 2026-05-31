@@ -2,17 +2,18 @@
 
 Three techniques keep Badi responsive with large result sets:
 
-## Virtualized result rendering
+## Qt Model-View Rendering
 
-Badi keeps filtering state in Zig and renders only a capped slice of matching
-rows into `QListWidget`. The full result set lives in the source arrays:
+Badi uses `QListView` with a custom `QAbstractListModel`. The full result set
+lives in Zig arrays, and Qt asks the model for only the rows it needs to paint:
 
 - `visible_indices` stores matching source row indexes
 - `selected_index` points into `visible_indices`
-- `QListWidget` receives at most 128 rows around the current selection
+- `onModelRowCount` returns the current visible row count
+- `onModelData` returns a `QVariant` string for the requested row
 
-This avoids creating a Qt item for every source row and avoids per-row
-`SetRowHidden` calls while typing.
+This avoids creating a Qt item for every source row, avoids per-row
+`SetRowHidden` calls while typing, and leaves viewport virtualization to Qt.
 
 ## Streaming append
 
@@ -28,9 +29,10 @@ rendering.
 
 ## Result
 
-| Metric                              | Value |
-| ----------------------------------- | ----- |
-| Qt rows per render                  | <=128 |
-| Per-keystroke source scan           | O(N)  |
-| Per-keystroke Qt item churn         | O(1)  |
-| Per-row hide/show calls while typing | 0     |
+| Metric                               | Value          |
+| ------------------------------------ | -------------- |
+| Persistent Qt item objects per row   | 0              |
+| Per-keystroke source scan            | O(N)           |
+| Per-keystroke Qt item churn          | 0              |
+| Rows painted per frame               | viewport-bound |
+| Per-row hide/show calls while typing | 0              |

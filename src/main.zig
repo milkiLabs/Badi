@@ -51,8 +51,13 @@ pub fn main(init: std.process.Init) !u8 {
     const badge = qt6.QLabel.New5("", main_widget);
     badge.Hide();
 
-    const list = qt6.QListWidget.New(main_widget);
+    const list = qt6.QListView.New(main_widget);
     list.SetUniformItemSizes(true);
+    list.SetSelectionMode(qt6.qabstractitemview_enums.SelectionMode.SingleSelection);
+    list.SetSelectionBehavior(qt6.qabstractitemview_enums.SelectionBehavior.SelectRows);
+    list.SetEditTriggers(qt6.qabstractitemview_enums.EditTrigger.NoEditTriggers);
+    const model = qt6.QAbstractListModel.New2(main_widget);
+    list.SetModel(model);
     const no_results = qt6.QLabel.New5("No apps found", main_widget);
 
     // 5. Layout Engine
@@ -86,6 +91,8 @@ pub fn main(init: std.process.Init) !u8 {
     }
     var stdin_pending: std.ArrayList(u8) = .empty;
     errdefer stdin_pending.deinit(allocator);
+    var current_query: std.ArrayList(u8) = .empty;
+    errdefer current_query.deinit(allocator);
     var visible_indices: std.ArrayList(usize) = .empty;
     errdefer visible_indices.deinit(allocator);
 
@@ -103,6 +110,7 @@ pub fn main(init: std.process.Init) !u8 {
             .badge = badge,
             .input = input,
             .list = list,
+            .model = model,
             .no_results = no_results,
         },
         .mode = if (is_piped) .piped else .apps,
@@ -111,6 +119,7 @@ pub fn main(init: std.process.Init) !u8 {
         .piped_items = piped_items,
         .stdin_pending = stdin_pending,
         .prefixes = prefixes,
+        .current_query = current_query,
         .visible_indices = visible_indices,
         .selected_index = null,
     };
@@ -119,7 +128,9 @@ pub fn main(init: std.process.Init) !u8 {
     defer app_state.deinit();
 
     // 7. Event Connections
-    list.OnItemDoubleClicked(callbacks.onItemDoubleClicked);
+    model.OnRowCount(window.onModelRowCount);
+    model.OnData(window.onModelData);
+    list.OnDoubleClicked(callbacks.onItemDoubleClicked);
     input.OnKeyPressEvent(callbacks.onKeyPress);
 
     // 8. Display

@@ -63,9 +63,9 @@ pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
     window.filterList(query);
 }
 
-/// Triggered when the user double clicks an application in the QListWidget.
-pub fn onItemDoubleClicked(list: qt6.QListWidget, _: qt6.QListWidgetItem) callconv(.c) void {
-    window.syncSelectionFromRenderedRow(list.CurrentRow());
+/// Triggered when the user double clicks a result in the list view.
+pub fn onItemDoubleClicked(_: qt6.QListView, index: qt6.QModelIndex) callconv(.c) void {
+    window.syncSelectionFromIndex(index);
     launcher.executeSelection();
 }
 
@@ -131,7 +131,7 @@ fn appendStdinLine(raw_line: []const u8) !void {
     try window.appendPipedItem(try app.allocator.dupe(u8, trimmed));
 }
 
-/// Key event interceptor for QLineEdit to map Up/Down/Enter over to the QListWidget/Launcher.
+/// Key event interceptor for QLineEdit to map Up/Down/Enter over to the result view.
 pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
     const app = context.state();
     const key = event.Key();

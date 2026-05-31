@@ -2,16 +2,56 @@ const std = @import("std");
 const qt6 = @import("libqt6zig");
 const context = @import("../context.zig");
 
-const max_rendered_rows = 128;
+const display_role = qt6.qnamespace_enums.ItemDataRole.DisplayRole;
 
 pub const Selection = struct {
     data: []const u8,
 };
 
-/// Recomputes the filtered source rows and renders only the selectable window.
+pub fn onModelRowCount(_: qt6.QAbstractListModel, parent: qt6.QModelIndex) callconv(.c) i32 {
+    if (parent.IsValid()) return 0;
+
+    const app = context.state();
+    return switch (app.mode) {
+        .prefix => if (prefixQuery().len == 0) 0 else 1,
+        else => @intCast(app.visible_indices.items.len),
+    };
+}
+
+pub fn onModelData(_: qt6.QAbstractListModel, index: qt6.QModelIndex, role: i32) callconv(.c) qt6.QVariant {
+    if (role != display_role or !index.IsValid()) return qt6.QVariant.New();
+
+    const row = index.Row();
+    if (row < 0) return qt6.QVariant.New();
+
+    const app = context.state();
+    switch (app.mode) {
+        .apps => {
+            const source_index = sourceIndexFromModelRow(row) orelse return qt6.QVariant.New();
+            return qt6.QVariant.New24(app.apps()[source_index].name);
+        },
+        .piped => {
+            const source_index = sourceIndexFromModelRow(row) orelse return qt6.QVariant.New();
+            return qt6.QVariant.New24(app.piped_items.items[source_index]);
+        },
+        .prefix => |cfg| {
+            const query = prefixQuery();
+            if (row != 0 or query.len == 0) return qt6.QVariant.New();
+            const display_text = std.fmt.allocPrint(app.allocator, "Run {s}: {s}", .{ cfg.name, query }) catch return qt6.QVariant.New();
+            defer app.allocator.free(display_text);
+            return qt6.QVariant.New24(display_text);
+        },
+    }
+}
+
+/// Recomputes the filtered source rows and asks Qt's model-view layer to repaint.
 pub fn filterList(query: []const u8) void {
     const app = context.state();
 
+    app.ui.model.BeginResetModel();
+
+    app.current_query.clearRetainingCapacity();
+    app.current_query.appendSlice(app.allocator, query) catch {};
     app.visible_indices.clearRetainingCapacity();
     app.selected_index = null;
 
@@ -30,38 +70,41 @@ pub fn filterList(query: []const u8) void {
                 }
             }
         },
-        .prefix => |cfg| {
-            renderPrefixRow(cfg, query);
-            return;
-        },
+        .prefix => {},
     }
 
-    if (app.visible_indices.items.len == 0) {
-        clearRenderedRows();
+    const has_results = switch (app.mode) {
+        .prefix => query.len > 0,
+        else => app.visible_indices.items.len > 0,
+    };
+
+    if (has_results) {
+        app.selected_index = 0;
+        app.ui.no_results.Hide();
+    } else {
         app.ui.no_results.Show();
-        return;
     }
 
-    app.selected_index = 0;
-    renderVisibleRows();
-    app.ui.no_results.Hide();
+    app.ui.model.EndResetModel();
+    if (has_results) selectModelRow(0);
 }
 
 pub fn selectRelative(direction: i32) void {
     const app = context.state();
-    if (app.visible_indices.items.len == 0) return;
+    const len = resultCount();
+    if (len == 0) return;
 
-    const current = app.selected_index orelse 0;
+    const current = currentModelRow() orelse 0;
     const next = if (direction < 0) blk: {
         if (current == 0) return;
         break :blk current - 1;
     } else blk: {
-        if (current + 1 >= app.visible_indices.items.len) return;
+        if (current + 1 >= len) return;
         break :blk current + 1;
     };
 
+    selectModelRow(next);
     app.selected_index = next;
-    renderVisibleRows();
 }
 
 pub fn appendPipedItem(line: []const u8) !void {
@@ -81,36 +124,47 @@ pub fn appendPipedItem(line: []const u8) !void {
 
 pub fn renderPipedAppendBatch() void {
     const app = context.state();
-    if (app.mode != .piped or app.visible_indices.items.len == 0) return;
-    if (app.selected_index == null) app.selected_index = 0;
-    renderVisibleRows();
+    if (app.mode != .piped) return;
+
+    app.ui.model.BeginResetModel();
+    app.ui.model.EndResetModel();
+
+    if (app.visible_indices.items.len == 0) {
+        app.ui.no_results.Show();
+        return;
+    }
+
     app.ui.no_results.Hide();
+    selectModelRow(app.selected_index orelse 0);
 }
 
-pub fn syncSelectionFromRenderedRow(row: i32) void {
+pub fn syncSelectionFromIndex(index: qt6.QModelIndex) void {
+    if (!index.IsValid()) return;
+
+    const row = index.Row();
     if (row < 0) return;
+
     const app = context.state();
-    const rendered_start = renderedStart();
-    const selected = rendered_start + @as(usize, @intCast(row));
-    if (selected < app.visible_indices.items.len) {
+    const selected: usize = @intCast(row);
+    if (selected < resultCount()) {
         app.selected_index = selected;
     }
 }
 
 pub fn currentSelection() ?Selection {
     const app = context.state();
-    syncSelectionFromRenderedRow(app.ui.list.CurrentRow());
+    const current_index = app.ui.list.CurrentIndex();
+    defer current_index.Delete();
+    syncSelectionFromIndex(current_index);
 
     switch (app.mode) {
         .apps => {
             const source_index = selectedSourceIndex() orelse return null;
-            const entry = app.apps()[source_index];
-            return .{ .data = entry.exec };
+            return .{ .data = app.apps()[source_index].exec };
         },
         .piped => {
             const source_index = selectedSourceIndex() orelse return null;
-            const line = app.piped_items.items[source_index];
-            return .{ .data = line };
+            return .{ .data = app.piped_items.items[source_index] };
         },
         .prefix => return null,
     }
@@ -120,75 +174,61 @@ pub fn resetToMainList() void {
     const app = context.state();
     if (app.mode == .prefix) return;
     filterList("");
+    selectModelRow(0);
 }
 
-fn renderVisibleRows() void {
+fn selectModelRow(row: usize) void {
     const app = context.state();
-    const selected = app.selected_index orelse 0;
-    const start = renderedStart();
-    const end = @min(app.visible_indices.items.len, start + max_rendered_rows);
+    if (row >= resultCount()) return;
 
-    app.ui.list.SetUpdatesEnabled(false);
-    defer app.ui.list.SetUpdatesEnabled(true);
+    const parent = qt6.QModelIndex.New3();
+    defer parent.Delete();
+    const index = app.ui.model.Index(@intCast(row), 0, parent);
+    defer index.Delete();
 
-    app.ui.list.Clear();
-    for (app.visible_indices.items[start..end]) |source_index| {
-        switch (app.mode) {
-            .apps => {
-                const entry = app.apps()[source_index];
-                addListItem(entry.name);
-            },
-            .piped => addListItem(app.piped_items.items[source_index]),
-            .prefix => {},
-        }
-    }
-
-    if (selected >= start and selected < end) {
-        app.ui.list.SetCurrentRow(@intCast(selected - start));
-    }
+    app.ui.list.SetCurrentIndex(index);
+    app.ui.list.ScrollTo(index, qt6.qabstractitemview_enums.ScrollHint.EnsureVisible);
 }
 
-fn renderPrefixRow(cfg: context.Action, query: []const u8) void {
+fn currentModelRow() ?usize {
     const app = context.state();
+    const index = app.ui.list.CurrentIndex();
+    defer index.Delete();
 
-    clearRenderedRows();
-    if (query.len == 0) {
-        app.ui.no_results.Show();
-        return;
-    }
-
-    const display_text = std.fmt.allocPrint(app.allocator, "Run {s}: {s}", .{ cfg.name, query }) catch return;
-    defer app.allocator.free(display_text);
-    addListItem(display_text);
-    app.ui.list.SetCurrentRow(0);
-    app.ui.no_results.Hide();
-}
-
-fn renderedStart() usize {
-    const app = context.state();
-    const selected = app.selected_index orelse 0;
-    const len = app.visible_indices.items.len;
-    if (len <= max_rendered_rows or selected < max_rendered_rows) return 0;
-    return @min(selected - max_rendered_rows + 1, len - max_rendered_rows);
+    if (!index.IsValid()) return app.selected_index;
+    const row = index.Row();
+    if (row < 0) return app.selected_index;
+    return @intCast(row);
 }
 
 fn selectedSourceIndex() ?usize {
     const app = context.state();
-    const selected = app.selected_index orelse return null;
+    const selected = app.selected_index orelse currentModelRow() orelse return null;
+    return sourceIndexFromModelRow(@intCast(selected));
+}
+
+fn sourceIndexFromModelRow(row: i32) ?usize {
+    if (row < 0) return null;
+
+    const app = context.state();
+    const selected: usize = @intCast(row);
     if (selected >= app.visible_indices.items.len) return null;
     return app.visible_indices.items[selected];
 }
 
+fn resultCount() usize {
+    const app = context.state();
+    return switch (app.mode) {
+        .prefix => if (prefixQuery().len == 0) 0 else 1,
+        else => app.visible_indices.items.len,
+    };
+}
+
+fn prefixQuery() []const u8 {
+    const app = context.state();
+    return app.current_query.items;
+}
+
 fn matches(text: []const u8, query: []const u8) bool {
     return query.len == 0 or std.ascii.indexOfIgnoreCase(text, query) != null;
-}
-
-fn clearRenderedRows() void {
-    const app = context.state();
-    app.ui.list.Clear();
-}
-
-fn addListItem(label: []const u8) void {
-    const app = context.state();
-    app.ui.list.AddItem2(qt6.QListWidgetItem.New2(label));
 }

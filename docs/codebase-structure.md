@@ -50,7 +50,7 @@ out of Qt rows.
 | File            | Deps                                | Purpose                                              |
 | --------------- | ----------------------------------- | ---------------------------------------------------- |
 | `callbacks.zig` | std, qt6, context, window, launcher | Signal handlers for text changes, key presses, stdin |
-| `window.zig`    | std, qt6, context                   | Virtualized QListWidget rendering, filter, select    |
+| `window.zig`    | std, qt6, context                   | QListView model callbacks, filter, select            |
 
 These files are the only ones that directly manipulate Qt widgets. They never
 parse `.desktop` files or exec strings — they delegate to `core/`.

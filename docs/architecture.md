@@ -69,7 +69,7 @@ $mod+p                  # from Sway keybinding (stdin = /dev/null)
 
 1. Load `.desktop` files synchronously via `desktop.loadDesktopApps()`
 2. Build `piped_items` is empty; `app_list` is populated
-3. Build filtered source indexes and render the first visible row slice
+3. Build filtered source indexes and reset the list model
 4. Show window (fully interactive from the first frame)
 
 ### Why synchronous loading?
@@ -96,7 +96,7 @@ The active prefix is stored as a `config.Action` in `AppMode.prefix`.
 
 - `src/ui/callbacks.zig` — trigger detection in `onTextChanged`
 - `src/ui/window.zig` — prefix row display
-  - `renderPrefixRow`
+  - `onModelData`
 - `src/ui/callbacks.zig` — `exitPrefixMode()` helper
 
 ## Exit Codes
