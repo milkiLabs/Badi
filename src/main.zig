@@ -86,6 +86,8 @@ pub fn main(init: std.process.Init) !u8 {
     }
     var stdin_pending: std.ArrayList(u8) = .empty;
     errdefer stdin_pending.deinit(allocator);
+    var visible_indices: std.ArrayList(usize) = .empty;
+    errdefer visible_indices.deinit(allocator);
 
     // Load data now so the window is responsive the moment it appears.
     if (!is_piped) {
@@ -104,12 +106,13 @@ pub fn main(init: std.process.Init) !u8 {
             .no_results = no_results,
         },
         .mode = if (is_piped) .piped else .apps,
-        .list_dirty = false,
         .exit_code = null,
         .app_list = app_list,
         .piped_items = piped_items,
         .stdin_pending = stdin_pending,
         .prefixes = prefixes,
+        .visible_indices = visible_indices,
+        .selected_index = null,
     };
     // Register the state so callbacks can reach it via context.state().
     context.setActive(&app_state);
@@ -132,7 +135,6 @@ pub fn main(init: std.process.Init) !u8 {
         notifier.OnActivated(callbacks.onStdinActivated);
     } else {
         // Apps: data already loaded — populate list, then show.
-        window.rebuildList();
         window.filterList("");
         no_results.Hide();
         main_widget.Show();

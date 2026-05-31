@@ -69,7 +69,7 @@ $mod+p                  # from Sway keybinding (stdin = /dev/null)
 
 1. Load `.desktop` files synchronously via `desktop.loadDesktopApps()`
 2. Build `piped_items` is empty; `app_list` is populated
-3. Populate `QListWidget` via `rebuildList()`
+3. Build filtered source indexes and render the first visible row slice
 4. Show window (fully interactive from the first frame)
 
 ### Why synchronous loading?
@@ -84,7 +84,7 @@ hardware with warm disk caches.
 - `src/main.zig` — synchronous desktop loading
   - `app_list = try desktop.loadDesktopApps(...)`
 - `src/main.zig` — list population and show
-  - `window.rebuildList(); window.filterList("")`
+  - `window.filterList("")`
 - `src/core/desktop.zig` — `.desktop` file parsing
 
 ## Prefix Mode
@@ -96,7 +96,7 @@ The active prefix is stored as a `config.Action` in `AppMode.prefix`.
 
 - `src/ui/callbacks.zig` — trigger detection in `onTextChanged`
 - `src/ui/window.zig` — prefix row display
-  - `updatePrefixRow`
+  - `renderPrefixRow`
 - `src/ui/callbacks.zig` — `exitPrefixMode()` helper
 
 ## Exit Codes

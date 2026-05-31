@@ -9,7 +9,6 @@ const url = @import("../utils/url.zig");
 /// Exits prefix mode back to apps mode.
 fn exitPrefixMode(app: *context.AppState) void {
     app.mode = .apps;
-    app.list_dirty = true;
     app.ui.badge.Hide();
     app.ui.input.SetPlaceholderText("Search apps...");
     window.resetToMainList();
@@ -34,7 +33,6 @@ pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
         for (app.prefixes.items) |cfg| {
             if (query.len >= cfg.trigger.len and std.mem.eql(u8, query[0..cfg.trigger.len], cfg.trigger)) {
                 app.mode = .{ .prefix = cfg };
-                app.list_dirty = true;
                 const badge_text = std.fmt.allocPrint(app.allocator, "{s} {s}", .{ cfg.icon, cfg.name }) catch return;
                 defer app.allocator.free(badge_text);
                 app.ui.badge.SetText(badge_text);
@@ -53,7 +51,6 @@ pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
                 .icon = "🌐",
                 .action = if (has_scheme) "xdg-open %s" else "xdg-open https://%s",
             } };
-            app.list_dirty = true;
             app.ui.badge.SetText("🌐 Browser");
             app.ui.badge.Show();
             window.filterList(query);
@@ -67,7 +64,8 @@ pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
 }
 
 /// Triggered when the user double clicks an application in the QListWidget.
-pub fn onItemDoubleClicked(_: qt6.QListWidget, _: qt6.QListWidgetItem) callconv(.c) void {
+pub fn onItemDoubleClicked(list: qt6.QListWidget, _: qt6.QListWidgetItem) callconv(.c) void {
+    window.syncSelectionFromRenderedRow(list.CurrentRow());
     launcher.executeSelection();
 }
 
@@ -111,6 +109,7 @@ fn appendStdinBytes(bytes: []const u8) !void {
         try appendStdinLine(app.stdin_pending.items[start..newline]);
         start = newline + 1;
     }
+    window.renderPipedAppendBatch();
 
     if (start > 0) {
         try app.stdin_pending.replaceRange(app.allocator, 0, start, &.{});
@@ -122,6 +121,7 @@ fn flushPendingStdinLine() !void {
     if (app.stdin_pending.items.len == 0) return;
     try appendStdinLine(app.stdin_pending.items);
     app.stdin_pending.clearRetainingCapacity();
+    window.renderPipedAppendBatch();
 }
 
 fn appendStdinLine(raw_line: []const u8) !void {

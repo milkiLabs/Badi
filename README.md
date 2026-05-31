@@ -82,7 +82,7 @@ src/
     launcher.zig     — Launch/execute the selected item
   ui/
     callbacks.zig    — Qt signal callbacks (text change, key press, stdin)
-    window.zig       — QListWidget management (rebuild, filter, select)
+    window.zig       — Virtualized QListWidget rendering, filter, select
 docs/
   architecture.md    — Mode detection and startup design
   actions.md         — Prefix action configuration

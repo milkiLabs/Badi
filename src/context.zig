@@ -42,12 +42,13 @@ pub const AppState = struct {
     },
 
     mode: AppMode,
-    list_dirty: bool, // true when the QListWidget is out of sync with data
     exit_code: ?u8, // set by selection, returned from main()
     app_list: ?DesktopAppList,
     piped_items: std.ArrayList([]const u8), // owned strings from stdin
     stdin_pending: std.ArrayList(u8), // raw bytes awaiting a newline
     prefixes: std.ArrayList(Action),
+    visible_indices: std.ArrayList(usize), // filtered source rows currently selectable
+    selected_index: ?usize, // index into visible_indices, not the Qt row
 
     pub fn apps(self: *const AppState) []const DesktopEntry {
         if (self.app_list) |list| return list.entries;
@@ -60,6 +61,7 @@ pub const AppState = struct {
         self.piped_items.deinit(self.allocator);
         self.stdin_pending.deinit(self.allocator);
         self.prefixes.deinit(self.allocator);
+        self.visible_indices.deinit(self.allocator);
         active_state = null;
     }
 };
@@ -74,6 +76,3 @@ pub fn setActive(app_state: *AppState) void {
 pub fn state() *AppState {
     return active_state.?;
 }
-
-// Qt UserRole constant — data attached to each QListWidgetItem.
-pub const UserRole: i32 = 256;

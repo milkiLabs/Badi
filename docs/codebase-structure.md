@@ -41,17 +41,16 @@ clean.
 `desktop.zig` and `exec.zig` are **pure Zig** — no Qt imports. They can be
 tested, reused, or extracted without any Qt dependency.
 
-`launcher.zig` uses Qt (`QProcess`, `QVariant`) because it reads from the
-`QListWidget` to get the selected item, then launches it. It's thin (~67
-lines) and lives in `core/` because it's application logic, not widget
-management.
+`launcher.zig` uses Qt (`QProcess`) to detach launched commands. It asks
+`ui/window.zig` for the current app-side selection instead of reading data back
+out of Qt rows.
 
 ### `ui/` — Qt Widget Manipulation
 
 | File            | Deps                                | Purpose                                              |
 | --------------- | ----------------------------------- | ---------------------------------------------------- |
 | `callbacks.zig` | std, qt6, context, window, launcher | Signal handlers for text changes, key presses, stdin |
-| `window.zig`    | std, qt6, context                   | QListWidget management: rebuild, filter, select      |
+| `window.zig`    | std, qt6, context                   | Virtualized QListWidget rendering, filter, select    |
 
 These files are the only ones that directly manipulate Qt widgets. They never
 parse `.desktop` files or exec strings — they delegate to `core/`.

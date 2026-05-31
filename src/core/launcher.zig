@@ -2,39 +2,28 @@ const std = @import("std");
 const qt6 = @import("libqt6zig");
 const context = @import("../context.zig");
 const exec = @import("exec.zig");
+const window = @import("../ui/window.zig");
 
-/// Executes the currently selected item from the Qt list widget.
+/// Executes the current app-side selection.
 pub fn executeSelection() void {
     const app = context.state();
     switch (app.mode) {
         // In piped mode, we print the selected line to stdout and exit with code 0, so the output can be captured by a shell pipe.
         .piped => {
-            const row = app.ui.list.CurrentRow();
-            if (row < 0) return;
-            const item = app.ui.list.Item(row);
-            const variant = item.Data(context.UserRole);
-            defer variant.Delete();
-            const data_raw = variant.ToString(app.allocator);
-            defer app.allocator.free(data_raw);
+            const selection = window.currentSelection() orelse return;
             const stdout = std.Io.File.stdout();
             var buf: [8192]u8 = undefined;
             var writer = stdout.writer(app.io, &buf);
-            writer.interface.print("{s}\n", .{data_raw}) catch {};
+            writer.interface.print("{s}\n", .{selection.data}) catch {};
             writer.interface.flush() catch {};
             app.exit_code = 0;
             _ = app.ui.main.Close();
         },
         // In apps mode, we execute the desktop entry's Exec command and exit immediately, so the launched app isn't a child of Badi and won't be killed when Badi exits.
         .apps => {
-            const row = app.ui.list.CurrentRow();
-            if (row < 0) return;
-            const item = app.ui.list.Item(row);
-            const variant = item.Data(context.UserRole);
-            defer variant.Delete();
-            const data_raw = variant.ToString(app.allocator);
-            defer app.allocator.free(data_raw);
-            var command = exec.parseExec(app.allocator, data_raw) catch |err| {
-                std.log.warn("failed parsing desktop Exec command '{s}': {}", .{ data_raw, err });
+            const selection = window.currentSelection() orelse return;
+            var command = exec.parseExec(app.allocator, selection.data) catch |err| {
+                std.log.warn("failed parsing desktop Exec command '{s}': {}", .{ selection.data, err });
                 return;
             };
             defer command.deinit();
