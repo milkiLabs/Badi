@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      QT_DIR: /opt/qt6/6.8.3/gcc_64
     steps:
       - uses: actions/checkout@v4
 
@@ -15,12 +17,16 @@ jobs:
         with:
           version: latest
 
-      - id: install-qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          install-deps: 'false'
+      - name: Install Qt6 via aqtinstall
+        run: |
+          pip install aqtinstall
+          aqt install-qt linux desktop 6.8.3 gcc_64 -O /opt/qt6
 
-      - run: zig build -Doptimize=ReleaseFast -Dqt6-extra-path=${{ steps.install-qt.outputs.qt-path }} -Dqt6-lib-path=${{ steps.install-qt.outputs.qt-path }}/lib
+      - name: Verify Qt
+        run: ls $QT_DIR/include/QtCore/qchar.h
+
+      - name: Build
+        run: zig build -Doptimize=ReleaseFast -Dqt6-extra-path=$QT_DIR -Dqt6-lib-path=$QT_DIR/lib
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -1,7 +1,7 @@
 .{
     .name = .badi,
     .version = "1.0.0",
-    .fingerprint = 0x1fba97cd0764b8bc, // Changing this has security and trust implications.
+    .fingerprint = 0xcc8136dcdb502858, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .libqt6zig = .{
