@@ -3,33 +3,43 @@ name: Release Build
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
 
 jobs:
   build:
+    name: Build and Release
     runs-on: ubuntu-latest
-    env:
-      QT_DIR: /opt/qt6/6.8.3/gcc_64
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
         with:
-          version: latest
+          version: '6.8.3'
+          target: 'desktop'
+          install-deps: 'true'
 
-      - name: Install Qt6 via aqtinstall
-        run: |
-          pip install aqtinstall
-          aqt install-qt linux desktop 6.8.3 gcc_64 -O /opt/qt6
-
-      - name: Verify Qt
-        run: ls $QT_DIR/include/QtCore/qchar.h
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
 
       - name: Build
-        run: zig build -Doptimize=ReleaseFast -Dqt6-extra-path=$QT_DIR -Dqt6-lib-path=$QT_DIR/lib
+        run: zig build -Doptimize=ReleaseFast -Dqt6-extra-path=$QT_ROOT_DIR -Dqt6-lib-path=$QT_ROOT_DIR/lib
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ github.ref_name }}
           path: zig-out/
+
+      - name: Create Archive
+        run: tar -czvf badi-linux-x86_64.tar.gz -C zig-out/bin Badi
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: badi-linux-x86_64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
