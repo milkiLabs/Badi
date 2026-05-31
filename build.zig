@@ -5,9 +5,14 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const app_name = "Badi";
 
+    const qt6_extra_path = b.option([]const u8, "qt6-extra-path", "Qt6 header search path") orelse "";
+    const qt6_paths: []const []const u8 = if (qt6_extra_path.len > 0) &.{qt6_extra_path} else &.{};
+    const qt6lib_path = b.option([]const u8, "qt6-lib-path", "Qt6 library search path") orelse "";
+
     const qt6zig = b.dependency("libqt6zig", .{
         .target = target,
         .optimize = .ReleaseFast,
+        .extra_paths = qt6_paths,
     });
 
     const exe = b.addExecutable(.{
@@ -34,6 +39,9 @@ pub fn build(b: *std.Build) void {
         .cwd_relative = std.mem.trim(u8, result.stdout, &std.ascii.whitespace),
     });
     exe.root_module.linkSystemLibrary("unwind", .{});
+
+    if (qt6lib_path.len > 0)
+        exe.root_module.addLibraryPath(.{ .cwd_relative = qt6lib_path });
 
     // Link the libqt6zig static libraries
     const qtlibs = &[_][]const u8{

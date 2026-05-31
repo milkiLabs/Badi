@@ -15,10 +15,12 @@ jobs:
         with:
           version: latest
 
-      - name: Install Qt6 dev packages
-        run: sudo apt-get update && sudo apt-get install -y qt6-base-dev
+      - id: install-qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          install-deps: 'false'
 
-      - run: zig build -Doptimize=ReleaseFast
+      - run: zig build -Doptimize=ReleaseFast -Dqt6-extra-path=${{ steps.install-qt.outputs.qt-path }} -Dqt6-lib-path=${{ steps.install-qt.outputs.qt-path }}/lib
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

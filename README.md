@@ -126,4 +126,8 @@ Customize colors, fonts, and dimensions in `~/.config/badi/theme.json`. See [doc
 | Build options                   | `zig build --help`                                                   |
 | Full library documentation      | [rcalixte.github.io/libqt6zig](https://rcalixte.github.io/libqt6zig) |
 
+## Acknowledgments
+
+Thanks to [libqt6zig](https://github.com/rcalixte/libqt6zig) for the Qt 6 Zig bindings that make this project possible.
+
 ## License
