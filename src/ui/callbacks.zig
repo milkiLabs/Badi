@@ -1,10 +1,15 @@
 const std = @import("std");
 const qt6 = @import("libqt6zig");
 const qk = qt6.qnamespace_enums.Key;
+const km = qt6.qnamespace_enums.KeyboardModifier;
 const context = @import("../context.zig");
 const window = @import("window.zig");
 const launcher = @import("../core/launcher.zig");
 const url = @import("../utils/url.zig");
+
+fn isCtrl(event: qt6.QKeyEvent) bool {
+    return (event.Modifiers() & km.ControlModifier) != 0;
+}
 
 /// Exits prefix mode back to apps mode.
 fn exitPrefixMode(app: *context.AppState) void {
@@ -135,8 +140,9 @@ fn appendStdinLine(raw_line: []const u8) !void {
 pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
     const app = context.state();
     const key = event.Key();
+    const ctrl = isCtrl(event);
 
-    if (key == qk.Key_Escape) {
+    if (key == qk.Key_Escape) { // --- Navigation ---
         if (app.mode == .prefix) {
             exitPrefixMode(app);
             event.Accept();
@@ -153,11 +159,23 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
     } else if (key == qk.Key_Down) {
         window.selectRelative(1);
         event.Accept();
-    } else if (key == qk.Key_W and (event.Modifiers() & qt6.qnamespace_enums.KeyboardModifier.ControlModifier) != 0) {
+    } else if (ctrl and key == qk.Key_C) { // --- Ctrl combos ---
+        self.Clear();
+        event.Accept();
+    } else if (ctrl and key == qk.Key_W) {
+        if (app.mode == .prefix) {
+            const current_text = self.Text(app.allocator);
+            defer app.allocator.free(current_text);
+            if (current_text.len == 0) {
+                exitPrefixMode(app);
+                event.Accept();
+                return;
+            }
+        }
         self.CursorWordBackward(true);
         self.Del();
         event.Accept();
-    } else if (key == qk.Key_Backspace) {
+    } else if (key == qk.Key_Backspace) { // --- Mode-aware keys ---
         if (app.mode == .prefix) {
             const current_text = self.Text(app.allocator);
             defer app.allocator.free(current_text);
