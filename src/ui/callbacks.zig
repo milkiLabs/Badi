@@ -153,6 +153,10 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
     } else if (key == qk.Key_Down) {
         window.selectRelative(1);
         event.Accept();
+    } else if (key == qk.Key_W and (event.Modifiers() & qt6.qnamespace_enums.KeyboardModifier.ControlModifier) != 0) {
+        self.CursorWordBackward(true);
+        self.Del();
+        event.Accept();
     } else if (key == qk.Key_Backspace) {
         if (app.mode == .prefix) {
             const current_text = self.Text(app.allocator);
