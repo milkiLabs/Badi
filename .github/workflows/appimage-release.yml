@@ -90,6 +90,7 @@ jobs:
         env:
           QTDIR: ${{ env.QT_ROOT_DIR }}
           QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
+          LD_LIBRARY_PATH: ""
           PATH: ${{ env.QT_ROOT_DIR }}/bin:${{ github.workspace }}/tools:${{ env.PATH }}
         run: |
           linuxdeploy \
