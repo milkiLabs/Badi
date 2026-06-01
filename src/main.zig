@@ -83,18 +83,10 @@ pub fn main(init: std.process.Init) !u8 {
     const is_piped = stdin_stat != null and stdin_stat.?.kind == .named_pipe;
 
     var app_list: ?desktop.DesktopAppList = null;
-    errdefer if (app_list) |*list_| list_.deinit();
-    var piped_items: std.ArrayList([]const u8) = .empty;
-    errdefer {
-        for (piped_items.items) |item| allocator.free(item);
-        piped_items.deinit(allocator);
-    }
-    var stdin_pending: std.ArrayList(u8) = .empty;
-    errdefer stdin_pending.deinit(allocator);
-    var current_query: std.ArrayList(u8) = .empty;
-    errdefer current_query.deinit(allocator);
-    var visible_indices: std.ArrayList(usize) = .empty;
-    errdefer visible_indices.deinit(allocator);
+    const piped_items: std.ArrayList([]const u8) = .empty;
+    const stdin_pending: std.ArrayList(u8) = .empty;
+    const current_query: std.ArrayList(u8) = .empty;
+    const visible_indices: std.ArrayList(usize) = .empty;
 
     // Load data now so the window is responsive the moment it appears.
     if (!is_piped) {
