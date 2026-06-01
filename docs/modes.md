@@ -129,9 +129,9 @@ binary slab.
 
 On Enter, dispatches to the configured `EmojiAction`:
 
-- `.copy` (default) — `wl-copy` → `xclip` → stdout fallback
+- `.copy` (default) — `wl-copy` → stdout fallback
 - `.print` — write the glyph to stdout, exit 0
-- `.type_keys` — `wtype` on Wayland, `xdotool` on X11 (falls back to `.copy`)
+- `.type_keys` — `wtype` (falls back to `.copy`)
 
 On Escape: close with exit code 1 (cancelled).
 

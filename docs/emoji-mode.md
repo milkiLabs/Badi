@@ -39,15 +39,12 @@ When the user hits Enter on a selection, the configured action runs:
 
 Tries external clipboard helpers in order:
 
-1. `wl-copy` (from `wl-clipboard`) — Wayland. Spawned detached; it
-   daemonizes and serves the clipboard after Badi exits.
-2. `xclip -selection clipboard` — X11. Spawned with the glyph piped
-   to its stdin; Badi waits for it to finish so the data persists.
-3. **stdout fallback** — writes the glyph to stdout (dmenu-style) so
+1. `wl-copy` (from `wl-clipboard`) — spawn detached; it daemonizes
+   and serves the clipboard after Badi exits.
+2. **stdout fallback** — writes the glyph to stdout (dmenu-style) so
    the picker is still useful in a pipeline.
 
-On Wayland you need `wl-clipboard` installed. On X11 you need
-`xclip`.
+You need `wl-clipboard` installed.
 
 ### `.print`
 
@@ -57,13 +54,21 @@ caller gets exactly the selected value.
 
 ### `.type_keys`
 
-Detects the display server from the environment:
+Synthesizes the glyph as keystrokes via `wtype -- <glyph>`. Requires
+`wtype` to be installed. Badi runs only on Wayland, so `wtype` is
+the only typer supported.
 
-- `WAYLAND_DISPLAY` is set → runs `wtype -- <glyph>`.
-- Otherwise → runs `xdotool type --clearmodifiers -- <glyph>`.
+**Focus dance.** `wtype` types into the *currently focused* window.
+Badi is itself focused while running, so we close Badi first and
+run `wtype` from a small `sh -c` helper that sleeps 100 ms before
+invoking it. That gives the window manager a moment to restore
+focus to whatever app was focused before Badi opened (the terminal,
+the text editor, etc.), and the glyph lands there. The helper
+outlives Badi because it's a detached process, so Badi can exit
+immediately after launching it.
 
-If neither tool is found, falls back to `.copy` so the user still gets
-the glyph.
+If `wtype` is not installed, falls back to the clipboard via
+`.copy`.
 
 ## Data layout
 

@@ -173,7 +173,7 @@ You can also enter emoji mode mid-session by typing `": "` while in apps mode.
 | `--emoji`  | Enter emoji mode (initial). Mutually exclusive with `--prompt`. |
 | `--copy`   | Copy the selected glyph to the clipboard (default).            |
 | `--print`  | Write the glyph to stdout, exit 0.                             |
-| `--type`   | Synthesize keystrokes (wtype on Wayland, xdotool on X11).      |
+| `--type`   | Synthesize keystrokes via `wtype` (Wayland only).             |
 
 See [docs/emoji-mode.md](docs/emoji-mode.md) for details.
 
