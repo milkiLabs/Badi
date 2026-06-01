@@ -21,10 +21,6 @@ script:
   - cp -Pv "${QT_ROOT_DIR}/lib/"libicudata.so*       AppDir/usr/lib/
   - cp -v  "${QT_ROOT_DIR}/plugins/platforms/libqxcb.so" AppDir/usr/plugins/platforms/
 
-  - patchelf --set-rpath '$ORIGIN/../lib:$ORIGIN/../lib/x86_64-linux-gnu' AppDir/usr/bin/badi
-  - for f in AppDir/usr/lib/libQt6*.so.6; do patchelf --set-rpath '$ORIGIN' "$f"; done
-  - patchelf --set-rpath '$ORIGIN/../../lib:$ORIGIN/../../lib/x86_64-linux-gnu' AppDir/usr/plugins/platforms/libqxcb.so
-
 AppDir:
   path: ./AppDir
 
