@@ -12,22 +12,16 @@ pub const max_results = 50;
 pub fn score(query: []const u8, candidate: []const u8) i64 {
     if (query.len == 0 or candidate.len == 0) return -1;
 
-    var qbuf: [128]u8 = undefined;
-    var cbuf: [256]u8 = undefined;
-    const q = normalize(query, &qbuf) orelse return -1;
-    const c = normalize(candidate, &cbuf) orelse return -1;
-    if (q.len == 0) return -1;
-
     // Direct substring match (single token)
-    if (std.mem.indexOf(u8, c, q)) |pos| {
+    if (std.ascii.findIgnoreCase(candidate, query)) |pos| {
         return @as(i64, @intCast(10000 - pos));
     }
 
     // Multi-token: each space-separated piece must appear in order
-    if (tokenScore(q, c)) |s| return s;
+    if (tokenScore(query, candidate)) |s| return s;
 
     // Acronym: query is prefix of the first-letter acronym
-    if (acronymScore(q, c)) |s| return s;
+    if (acronymScore(query, candidate)) |s| return s;
 
     return -1;
 }
@@ -91,14 +85,6 @@ pub fn searchMapped(
 
 // --- Internals ---
 
-fn normalize(text: []const u8, buf: []u8) ?[]const u8 {
-    if (text.len > buf.len) return null;
-    for (text, 0..) |c, i| {
-        buf[i] = std.ascii.toLower(c);
-    }
-    return buf[0..text.len];
-}
-
 /// Multi-token: split query on whitespace, each token must appear as a
 /// substring after the previous token's position.
 fn tokenScore(q: []const u8, c: []const u8) ?i64 {
@@ -114,7 +100,7 @@ fn tokenScore(q: []const u8, c: []const u8) ?i64 {
         while (i < q.len and !isSpace(q[i])) : (i += 1) {}
         const token = q[tok_start..i];
 
-        const pos = std.mem.indexOf(u8, c[search_start..], token) orelse return null;
+        const pos = std.ascii.findIgnoreCase(c[search_start..], token) orelse return null;
         const abs_pos = search_start + pos;
         if (first_pos == null) first_pos = abs_pos;
         total_pos += @as(i64, @intCast(abs_pos));
@@ -131,7 +117,9 @@ fn tokenScore(q: []const u8, c: []const u8) ?i64 {
 }
 
 /// Acronym match: build first-letter acronym of candidate, check if query
-/// is a prefix of it.
+/// is a case-insensitive prefix of it. The acronym buffer is capped at 128
+/// bytes — no realistic candidate (app name, file path) has more word-
+/// initial letters than that.
 fn acronymScore(q: []const u8, c: []const u8) ?i64 {
     var buf: [128]u8 = undefined;
     var len: usize = 0;
@@ -139,7 +127,7 @@ fn acronymScore(q: []const u8, c: []const u8) ?i64 {
     for (c) |ch| {
         if (std.ascii.isAlphanumeric(ch)) {
             if (boundary and len < buf.len) {
-                buf[len] = ch;
+                buf[len] = std.ascii.toLower(ch);
                 len += 1;
             }
             boundary = false;
@@ -147,11 +135,9 @@ fn acronymScore(q: []const u8, c: []const u8) ?i64 {
             boundary = true;
         }
     }
-    const acr = buf[0..len];
-    if (acr.len >= q.len and std.mem.eql(u8, acr[0..q.len], q)) {
-        return 5000;
-    }
-    return null;
+    if (len < q.len) return null;
+    if (!std.ascii.eqlIgnoreCase(buf[0..q.len], q)) return null;
+    return 5000;
 }
 
 fn isSpace(c: u8) bool {
@@ -248,4 +234,16 @@ test "single-token direct match takes priority" {
     const acr = score("ff", "fast fox");
     try std.testing.expect(sub >= 0);
     try std.testing.expectEqual(5000, acr);
+}
+
+test "query longer than 128 chars is not silently truncated" {
+    var text: [300]u8 = undefined;
+    for (&text) |*c| c.* = 'a';
+    try std.testing.expectEqual(@as(i64, 10000), score(&text, &text));
+}
+
+test "candidate longer than 256 chars is not silently truncated" {
+    var long_candidate: [400]u8 = undefined;
+    for (&long_candidate) |*c| c.* = 'b';
+    try std.testing.expectEqual(@as(i64, 10000), score("bbb", &long_candidate));
 }
