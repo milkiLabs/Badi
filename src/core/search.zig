@@ -57,6 +57,38 @@ pub fn search(items: []const []const u8, query: []const u8, out: []ScoredItem) u
     return count;
 }
 
+/// Like `search` but maps each item to a searchable string via a comptime getter,
+/// avoiding intermediate allocations for heterogeneous collections (e.g. DesktopEntry[]).
+pub fn searchMapped(
+    comptime T: type,
+    comptime getText: fn (T) []const u8,
+    items: []const T,
+    query: []const u8,
+    out: []ScoredItem,
+) usize {
+    std.debug.assert(query.len > 0);
+
+    var count: usize = 0;
+    for (items, 0..) |item, i| {
+        const s = score(query, getText(item));
+        if (s >= 0) {
+            if (count < out.len) {
+                out[count] = .{ .index = i, .score = s };
+                count += 1;
+            }
+        }
+    }
+
+    std.mem.sort(ScoredItem, out[0..count], {}, struct {
+        fn desc(_: void, a: ScoredItem, b: ScoredItem) bool {
+            if (a.score != b.score) return a.score > b.score;
+            return a.index < b.index;
+        }
+    }.desc);
+
+    return count;
+}
+
 // --- Internals ---
 
 fn normalize(text: []const u8, buf: []u8) ?[]const u8 {

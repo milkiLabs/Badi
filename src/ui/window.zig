@@ -103,11 +103,17 @@ pub fn filterList(query: []const u8) void {
         var results_buf: [search.max_results]search.ScoredItem = undefined;
         const n = switch (app.mode) {
             .piped => search.search(app.piped_items.items, query, &results_buf),
-            .apps => blk: {
-                var name_buf: [1024][]const u8 = undefined;
-                const count = buildNamePointers(app, &name_buf);
-                break :blk if (count > 0) search.search(name_buf[0..count], query, &results_buf) else 0;
-            },
+            .apps => search.searchMapped(
+                context.DesktopEntry,
+                struct {
+                    fn get(e: context.DesktopEntry) []const u8 {
+                        return e.name;
+                    }
+                }.get,
+                app.apps(),
+                query,
+                &results_buf,
+            ),
             .prefix => 0,
         };
         for (results_buf[0..n]) |r| {
@@ -259,13 +265,4 @@ fn prefixQuery() []const u8 {
     return app.current_query.items;
 }
 
-/// Writes name pointers from the active source (apps or piped) into `buf`.
-/// Returns the number of pointers written.
-fn buildNamePointers(app: *context.AppState, buf: [][]const u8) usize {
-    const apps_ = app.apps();
-    const count = @min(apps_.len, buf.len);
-    for (apps_[0..count], 0..) |entry, i| {
-        buf[i] = entry.name;
-    }
-    return count;
-}
+
