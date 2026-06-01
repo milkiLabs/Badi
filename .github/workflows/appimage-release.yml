@@ -13,8 +13,13 @@ jobs:
       contents: write
 
     env:
-      VERSION: ${{ github.ref_name }}
-      APPIMAGE_EXTRACT_AND_RUN: 1
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+      QML_SOURCES_PATHS: ""
+      DISABLE_PLUGIN_QT_TRANSLATIONS: "1"
+      LINUXDEPLOY_OUTPUT_VERSION: ${{ github.ref_name }}
+      LDAI_OUTPUT: Badi-${{ github.ref_name }}-x86_64.AppImage
+      LDAI_UPDATE_INFORMATION: gh-releases-zsync|milkiLabs|Badi|latest|Badi-*-x86_64.AppImage.zsync
+      NO_STRIP: "1"
 
     steps:
       - name: Checkout repository
@@ -33,27 +38,77 @@ jobs:
       - name: Build
         run: zig build -Doptimize=ReleaseFast -Dqt6-extra-path=$QT_ROOT_DIR -Dqt6-lib-path=$QT_ROOT_DIR/lib
 
-      - name: Install AppImage build deps
+      - name: Install AppImage build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            python3-pip \
-            patchelf \
+            curl \
             desktop-file-utils \
-            fakeroot \
-            zsync \
-            squashfs-tools
-          pip3 install --user appimage-builder
-          pip3 install --user --force-reinstall 'packaging<22'
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+            file \
+            libunwind8
+
+      - name: Debug binary dependencies
+        run: |
+          file zig-out/bin/badi
+          readelf -d zig-out/bin/badi
+          ldd zig-out/bin/badi
+
+      - name: Stage AppDir
+        run: |
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
+          install -Dm755 zig-out/bin/badi AppDir/usr/bin/badi
+          install -Dm644 assets/badi.desktop AppDir/usr/share/applications/badi.desktop
+          install -Dm644 assets/badi.desktop AppDir/badi.desktop
+          install -Dm644 assets/badi-256.png AppDir/usr/share/icons/hicolor/256x256/apps/badi.png
+          install -Dm644 assets/badi-256.png AppDir/badi.png
+          install -Dm644 assets/badi-512.png AppDir/usr/share/icons/hicolor/512x512/apps/badi.png
+
+      - name: Download linuxdeploy tools
+        run: |
+          mkdir -p tools
+          curl -fsSL -o tools/linuxdeploy.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -fsSL -o tools/linuxdeploy-plugin-qt.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x tools/*.AppImage
+          ln -sf linuxdeploy.AppImage tools/linuxdeploy
+          ln -sf linuxdeploy-plugin-qt.AppImage tools/linuxdeploy-plugin-qt
 
       - name: Build AppImage
-        run: appimage-builder --recipe AppImageBuilder.yml --skip-test
+        run: |
+          export QTDIR="$QT_ROOT_DIR"
+          export QMAKE="$QT_ROOT_DIR/bin/qmake"
+          if [ ! -x "$QMAKE" ]; then
+            export QMAKE="$QT_ROOT_DIR/bin/qmake6"
+          fi
+          export LD_LIBRARY_PATH=""
+          export PATH="$QT_ROOT_DIR/bin:$GITHUB_WORKSPACE/tools:$PATH"
+
+          linuxdeploy \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/badi \
+            --desktop-file AppDir/badi.desktop \
+            --icon-file AppDir/badi.png \
+            --plugin qt \
+            --output appimage
 
       - name: Verify AppImage
         run: |
-          ls -la Badi-${{ github.ref_name }}-x86_64.AppImage
-          file Badi-${{ github.ref_name }}-x86_64.AppImage
+          test -s "Badi-${GITHUB_REF_NAME}-x86_64.AppImage"
+          file "Badi-${GITHUB_REF_NAME}-x86_64.AppImage"
+          rm -rf squashfs-root
+          "./Badi-${GITHUB_REF_NAME}-x86_64.AppImage" --appimage-extract >/dev/null
+          readelf -d squashfs-root/usr/bin/badi
+          ! readelf -d squashfs-root/usr/bin/badi | grep -F "/home/runner/work"
+          ldd_output="$(LD_LIBRARY_PATH="$PWD/squashfs-root/usr/lib:$PWD/squashfs-root/usr/lib/x86_64-linux-gnu:$PWD/squashfs-root/lib/x86_64-linux-gnu" ldd squashfs-root/usr/bin/badi 2>&1 || true)"
+          printf '%s\n' "$ldd_output"
+          ! printf '%s\n' "$ldd_output" | grep -F "not found"
+          test -f squashfs-root/usr/plugins/platforms/libqxcb.so
+          test -f squashfs-root/usr/lib/libQt6Core.so.6
+          rm -rf squashfs-root
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -65,6 +65,8 @@ env:
   QML_SOURCES_PATHS: ""                # Badi has no QML
   DISABLE_PLUGIN_QT_TRANSLATIONS: "1"  # skip qt_*.qm
   LINUXDEPLOY_OUTPUT_VERSION: ${{ github.ref_name }}  # embed tag in filename
+  LDAI_OUTPUT: Badi-${{ github.ref_name }}-x86_64.AppImage
+  LDAI_UPDATE_INFORMATION: gh-releases-zsync|milkiLabs|Badi|latest|Badi-*-x86_64.AppImage.zsync
   NO_STRIP: "1"                        # work around old bundled strip
 ```
 
@@ -94,15 +96,17 @@ After the standard `zig build`, the workflow runs:
    install.
 4. **Download linuxdeploy tools** — fetches
    `linuxdeploy-x86_64.AppImage`, `linuxdeploy-plugin-qt-x86_64.AppImage`,
-   and `appimagetool-940-x86_64.AppImage` from the upstream
-   `continuous` releases, `chmod +x` them, then creates short-name
-   symlinks (`linuxdeploy`, `linuxdeploy-plugin-qt`, `appimagetool`)
-   so the binaries can be invoked by basename via `PATH`.
+   from the upstream `continuous` releases, `chmod +x` them, then
+   creates short-name symlinks (`linuxdeploy`, `linuxdeploy-plugin-qt`)
+   so the binaries can be invoked by basename via `PATH`. The AppImage
+   output plugin is bundled with linuxdeploy.
 5. **Build AppImage** — sets `QTDIR`, `QMAKE`, and the `PATH` override
    on the step, then runs `linuxdeploy` with `--plugin qt
    --output appimage` to bundle the Qt 6 libraries and platform
    plugins and repack the AppDir as a squashfs AppImage.
-6. **Verify AppImage** — sanity-checks the file with `ls` + `file`.
+6. **Verify AppImage** — extracts the produced AppImage, rejects
+   absolute runner RPATHs, rejects unresolved `ldd` dependencies, and
+   checks that the Qt Xcb platform plugin and Qt core library were bundled.
 7. **Upload artifact** — as a GitHub Actions artifact
    (`name: Badi-<tag>-x86_64`).
 8. **GitHub Release** — attaches the AppImage to the release.
@@ -111,10 +115,12 @@ After the standard `zig build`, the workflow runs:
 
 | Var                                | Reason                                                                                                                                                       |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `APPIMAGE_EXTRACT_AND_RUN=1`       | The `ubuntu-latest` runner does not have FUSE; this lets the linuxdeploy and appimagetool AppImages self-extract.                                            |
+| `APPIMAGE_EXTRACT_AND_RUN=1`       | The `ubuntu-latest` runner does not have FUSE; this lets the linuxdeploy AppImages self-extract.                                                            |
 | `QML_SOURCES_PATHS=""`             | Badi is QML-free; clearing the var avoids a wasted scan for QML imports.                                                                                     |
 | `DISABLE_PLUGIN_QT_TRANSLATIONS=1` | Saves several MB by skipping `qt_*.qm` files (Badi is English-only).                                                                                         |
 | `LINUXDEPLOY_OUTPUT_VERSION`       | Embeds the tag in the AppImage filename so `Badi-v1.0.0-x86_64.AppImage` lands in the release.                                                                |
+| `LDAI_OUTPUT`                      | Forces the exact output filename instead of relying on generated naming.                                                                                     |
+| `LDAI_UPDATE_INFORMATION`          | Embeds GitHub Release update metadata and causes a matching `.zsync` file to be generated.                                                                   |
 | `NO_STRIP=1`                       | The `strip` bundled inside the linuxdeploy AppImage is too old to handle the `.relr.dyn` ELF section used by current glibc-built libraries.                |
 | `QMAKE` *(step-level)*             | Forces `linuxdeploy-plugin-qt` to query the correct `qmake`. Without this it may silently pick up a Qt5 `qmake` from the runner's `PATH`.                  |
 | `QTDIR` *(step-level)*             | Standard convention; some tools look for `$QTDIR/bin/qmake`. The plugin already prefers `$QMAKE` when set.                                                  |
@@ -122,10 +128,9 @@ After the standard `zig build`, the workflow runs:
 
 ## Pinning the linuxdeploy versions
 
-Both workflows pull from the upstream `continuous` rolling releases.
+The AppImage workflow pulls from the upstream `continuous` rolling releases.
 For a fully reproducible build, pin each tool to a specific tag —
-e.g. `1-alpha-20251107-1` for linuxdeploy and a specific
-`appimagetool-<N>` build for `appimagetool`. See
+e.g. a linuxdeploy release and a linuxdeploy-plugin-qt release. See
 [appimage.md#gotchas-discovered-while-building](appimage.md#gotchas-discovered-while-building)
 for the rationale.
 

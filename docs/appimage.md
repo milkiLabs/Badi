@@ -41,7 +41,7 @@ To build an AppImage locally you need everything required to build
 | `curl`                | Downloads the linuxdeploy tools                         | `pacman -S curl`          | `apt install curl`              |
 
 > If FUSE is unavailable (e.g. inside a container without `/dev/fuse`),
-> the linuxdeploy and appimagetool AppImages still run when
+> the linuxdeploy AppImages still run when
 > `APPIMAGE_EXTRACT_AND_RUN=1` is set in the environment. The release
 > workflow relies on this.
 
@@ -93,22 +93,16 @@ curl -fsSL -o linuxdeploy.AppImage \
 curl -fsSL -o linuxdeploy-plugin-qt.AppImage \
   https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
 
-curl -fsSL -o appimagetool.AppImage \
-  https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage
-
 chmod +x *.AppImage
 
 # Short-name symlinks so the binaries can be invoked by basename.
 # The upstream artifacts always carry the `.AppImage` suffix.
 ln -sf linuxdeploy.AppImage         linuxdeploy
 ln -sf linuxdeploy-plugin-qt.AppImage linuxdeploy-plugin-qt
-ln -sf appimagetool.AppImage        appimagetool
 ```
 
-> The asset name for `appimagetool` includes a build number suffix
-> (`appimagetool-940-x86_64.AppImage`). The old name
-> (`appimagetool-x86_64.AppImage` from the archived `AppImageKit`
-> repo) returns 404 — the project moved to `probonopd/go-appimage`.
+> linuxdeploy's official AppImage ships the AppImage output plugin, so
+> this workflow does not need to download `appimagetool` separately.
 
 ### 4. Run linuxdeploy
 
@@ -117,6 +111,8 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 export QML_SOURCES_PATHS=""
 export DISABLE_PLUGIN_QT_TRANSLATIONS=1
 export LINUXDEPLOY_OUTPUT_VERSION="v1.0.0-local"
+export LDAI_OUTPUT="Badi-v1.0.0-local-x86_64.AppImage"
+export LDAI_UPDATE_INFORMATION="gh-releases-zsync|milkiLabs|Badi|latest|Badi-*-x86_64.AppImage.zsync"
 export QMAKE="$(qmake6 -query QT_INSTALL_BINS)/qmake6"
 export QTDIR="$(qmake6 -query QT_INSTALL_PREFIX)"
 export NO_STRIP=1
@@ -131,9 +127,8 @@ linuxdeploy \
   --output appimage
 ```
 
-The output file is `Badi-v1.0.0-local-x86_64.AppImage` (named from
-`Name=Badi` in the desktop file plus the `LINUXDEPLOY_OUTPUT_VERSION`
-and arch).
+The output file is `Badi-v1.0.0-local-x86_64.AppImage` (named by
+`LDAI_OUTPUT`).
 
 ## Verification
 
@@ -166,10 +161,12 @@ AppImage convention).
 
 | Variable                          | Why it's set                                                                                                                                              |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APPIMAGE_EXTRACT_AND_RUN=1`      | Lets the linuxdeploy / appimagetool AppImages self-extract on hosts without FUSE (most CI runners).                                                       |
+| `APPIMAGE_EXTRACT_AND_RUN=1`      | Lets the linuxdeploy AppImages self-extract on hosts without FUSE (most CI runners).                                                                      |
 | `QML_SOURCES_PATHS=""`            | Badi doesn't use QML, but the Qt plugin walks this path for QML imports. Clearing it skips the scan.                                                       |
 | `DISABLE_PLUGIN_QT_TRANSLATIONS=1`| Skips bundling the `*.qm` translation files. They are unused (Badi is English-only) and account for several MB.                                           |
 | `LINUXDEPLOY_OUTPUT_VERSION`      | Embedded in the AppImage filename and inside the AppImage metadata. The release workflow sets this to the git tag (e.g. `v1.0.0`).                       |
+| `LDAI_OUTPUT`                     | Forces the exact AppImage filename.                                                                                                                       |
+| `LDAI_UPDATE_INFORMATION`         | Embeds GitHub Release update metadata and generates a `.zsync` file.                                                                                      |
 | `QMAKE`                           | Forces `linuxdeploy-plugin-qt` to query a specific `qmake` binary. **Required** if a system Qt5 is also installed and shadows Qt6 in `$PATH`.            |
 | `QTDIR`                           | Standard convention; some tools (and older versions of the Qt plugin) look for `$QTDIR/bin/qmake`. The plugin already prefers `$QMAKE` when set.        |
 | `NO_STRIP=1`                      | The `strip` binary bundled inside the linuxdeploy AppImage is too old to understand the `.relr.dyn` ELF section used by current glibc-built libraries.  |
@@ -200,11 +197,11 @@ the next person doesn't have to rediscover them:
    system's shared libraries, so it errors on `.relr.dyn` and
    `linuxdeploy` exits non-zero. Set `NO_STRIP=1`.
 
-5. **`appimagetool` moved.** The old
-   `AppImageKit/AppImageKit` repo is archived; the new home is
-   `probonopd/go-appimage`, and the asset name now includes a
-   build-number suffix. A bare `appimagetool-x86_64.AppImage` URL
-   404s.
+5. **Do not use `appimage-builder` for this project.** It can produce
+   an AppImage that passes CI file checks while preserving an absolute
+   runner `RUNPATH` in `usr/bin/badi` and leaving unresolved runtime
+   dependencies. Use linuxdeploy plus `linuxdeploy-plugin-qt`, then
+   extract and run `ldd` in CI before uploading.
 
 6. **PATH order matters for `QMAKE` discovery.** Even with
    `QMAKE=/usr/lib/qt6/bin/qmake6` set as an env var, also put
@@ -213,8 +210,8 @@ the next person doesn't have to rediscover them:
 
 7. **Upstream artifacts always have the `.AppImage` suffix, so
    `PATH` lookup by basename fails.** The downloads land as
-   `tools/linuxdeploy.AppImage`, `tools/linuxdeploy-plugin-qt.AppImage`,
-   and `tools/appimagetool.AppImage`. If the next step does
+   `tools/linuxdeploy.AppImage` and
+   `tools/linuxdeploy-plugin-qt.AppImage`. If the next step does
    `linuxdeploy --appdir …` and `tools/` is in `PATH`, the shell
    reports `linuxdeploy: command not found` (exit 127) because
    `linuxdeploy` is not the actual filename. Either invoke with
@@ -250,8 +247,8 @@ the next person doesn't have to rediscover them:
 - [linuxdeploy-plugin-qt](https://github.com/linuxdeploy/linuxdeploy-plugin-qt) —
   pulls in the Qt 6 platform plugin (`libqxcb`), `libQt6DBus`, and
   any other Qt modules the binary actually uses.
-- [appimagetool](https://github.com/probonopd/go-appimage) —
-  repacks the AppDir into a self-mounting squashfs AppImage.
+- linuxdeploy's AppImage output plugin — repacks the AppDir into a
+  self-mounting squashfs AppImage.
 - [libqt6zig](https://github.com/rcalixte/libqt6zig) — Zig bindings
   for Qt 6, linked statically into `badi` itself (so it does **not**
   need to be bundled into the AppImage; only the underlying Qt 6
