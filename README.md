@@ -85,13 +85,15 @@ src/
     window.zig       — QListView model callbacks, filter, select
 docs/
   architecture.md    — Mode detection and startup design
-  actions.md         — Prefix action configuration
-  theme.md           — Theme configuration
   performance.md     — Performance optimizations
   piped-mode.md      — Piped mode internals
   stdin-detection.md — TTY vs pipe vs /dev/null detection
-  build-changes.md   — Qt library additions
   codebase-structure.md — Core vs UI separation guide
+  user-docs/
+    actions.md       — Prefix action configuration
+    theme.md         — Theme configuration
+    search-algo.md   — Search algorithm details
+    shortcuts.md     — Keyboard shortcuts reference
 ```
 
 ## Usage
@@ -108,11 +110,11 @@ Type a trigger in the search box to switch modes:
 - `g ` — Google search
 - `> ` — Run shell command
 
-Configure in `~/.config/badi/config.json`. See [docs/actions.md](docs/actions.md).
+Configure in `~/.config/badi/config.json`. See [docs/user-docs/actions.md](docs/user-docs/actions.md).
 
 ### Theming
 
-Customize colors, fonts, and dimensions in `~/.config/badi/theme.json`. See [docs/theme.md](docs/theme.md).
+Customize colors, fonts, and dimensions in `~/.config/badi/theme.json`. See [docs/user-docs/theme.md](docs/user-docs/theme.md).
 
 ## Learn More
 

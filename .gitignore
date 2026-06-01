@@ -11,3 +11,6 @@ aur/*.tar.gz
 aur/badi*/
 aur/Badi/
 aur/Badi-*/
+
+.agents/
+.codex/

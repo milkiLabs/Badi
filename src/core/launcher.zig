@@ -2,7 +2,6 @@ const std = @import("std");
 const qt6 = @import("libqt6zig");
 const context = @import("../context.zig");
 const exec = @import("exec.zig");
-const window = @import("../ui/window.zig");
 
 /// Executes the current app-side selection.
 pub fn executeSelection() void {
@@ -10,7 +9,7 @@ pub fn executeSelection() void {
     switch (app.mode) {
         // In piped mode, we print the selected line to stdout and exit with code 0, so the output can be captured by a shell pipe.
         .piped => {
-            const selection = window.currentSelection() orelse return;
+            const selection = app.currentSelectionData() orelse return;
             const stdout = std.Io.File.stdout();
             var buf: [8192]u8 = undefined;
             var writer = stdout.writer(app.io, &buf);
@@ -21,7 +20,7 @@ pub fn executeSelection() void {
         },
         // In apps mode, we execute the desktop entry's Exec command and exit immediately, so the launched app isn't a child of Badi and won't be killed when Badi exits.
         .apps => {
-            const selection = window.currentSelection() orelse return;
+            const selection = app.currentSelectionData() orelse return;
             var command = exec.parseExec(app.allocator, selection.data) catch |err| {
                 std.log.warn("failed parsing desktop Exec command '{s}': {}", .{ selection.data, err });
                 return;

@@ -33,4 +33,4 @@ These work out of the box via Qt's default handling:
 | Ctrl+Left/Right | Move cursor by word                |
 | Shift+Arrow     | Select text                        |
 | Backspace       | Delete character before cursor     |
-| Shift+Backspace | Delete previous word               |
+| Ctrl+Backspace  | Delete previous word               |

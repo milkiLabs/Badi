@@ -5,9 +5,7 @@ const search = @import("../core/search.zig");
 
 const display_role = qt6.qnamespace_enums.ItemDataRole.DisplayRole;
 
-pub const Selection = struct {
-    data: []const u8,
-};
+pub const Selection = context.Selection;
 
 pub fn onModelRowCount(_: qt6.QAbstractListModel, parent: qt6.QModelIndex) callconv(.c) i32 {
     if (parent.IsValid()) return 0;
@@ -208,25 +206,6 @@ pub fn syncSelectionFromIndex(index: qt6.QModelIndex) void {
     }
 }
 
-pub fn currentSelection() ?Selection {
-    const app = context.state();
-    const current_index = app.ui.list.CurrentIndex();
-    defer current_index.Delete();
-    syncSelectionFromIndex(current_index);
-
-    switch (app.mode) {
-        .apps => {
-            const source_index = selectedSourceIndex() orelse return null;
-            return .{ .data = app.apps()[source_index].exec };
-        },
-        .piped => {
-            const source_index = selectedSourceIndex() orelse return null;
-            return .{ .data = app.piped_items.items[source_index] };
-        },
-        .prefix => return null,
-    }
-}
-
 pub fn resetToMainList() void {
     const app = context.state();
     if (app.mode == .prefix) return;
@@ -256,12 +235,6 @@ fn currentModelRow() ?usize {
     const row = index.Row();
     if (row < 0) return app.selected_index;
     return @intCast(row);
-}
-
-fn selectedSourceIndex() ?usize {
-    const app = context.state();
-    const selected = app.selected_index orelse currentModelRow() orelse return null;
-    return sourceIndexFromModelRow(@intCast(selected));
 }
 
 fn sourceIndexFromModelRow(row: i32) ?usize {

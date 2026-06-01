@@ -58,6 +58,24 @@ pub const AppState = struct {
         return &[_]DesktopEntry{};
     }
 
+    pub const Selection = struct {
+        data: []const u8,
+    };
+
+    /// Resolves the current selection's data from the already-synced selected_index.
+    /// Does not touch Qt widgets — pure data lookup using visible_indices.
+    pub fn currentSelectionData(self: *const AppState) ?Selection {
+        const selected = self.selected_index orelse return null;
+        if (selected >= self.visible_indices.items.len) return null;
+        const source_index = self.visible_indices.items[selected];
+
+        return switch (self.mode) {
+            .apps => .{ .data = self.apps()[source_index].exec },
+            .piped => .{ .data = self.piped_items.items[source_index] },
+            .prefix => null,
+        };
+    }
+
     pub fn deinit(self: *AppState) void {
         if (self.app_list) |*list| list.deinit();
         for (self.piped_items.items) |item| self.allocator.free(item);

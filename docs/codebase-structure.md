@@ -41,9 +41,10 @@ clean.
 `desktop.zig` and `exec.zig` are **pure Zig** — no Qt imports. They can be
 tested, reused, or extracted without any Qt dependency.
 
-`launcher.zig` uses Qt (`QProcess`) to detach launched commands. It asks
-`ui/window.zig` for the current app-side selection instead of reading data back
-out of Qt rows.
+`launcher.zig` uses Qt (`QProcess`) to detach launched commands. It reads
+selection data directly from `context.state()` via `currentSelectionData()`,
+which resolves `selected_index` against `visible_indices` without touching Qt
+widgets.
 
 ### `ui/` — Qt Widget Manipulation
 
