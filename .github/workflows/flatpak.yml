@@ -1,0 +1,36 @@
+name: Flatpak Build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ "v*" ]
+  pull_request:
+
+jobs:
+  build-flatpak:
+    name: Build Flatpak
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch Latest Zig Nightly for Flatpak Manifest
+        run: |
+          ZIG_JSON=$(curl -s https://ziglang.org/download/index.json)
+          ZIG_URL=$(echo $ZIG_JSON | jq -r '.master."x86_64-linux".tarball')
+          ZIG_SHA=$(echo $ZIG_JSON | jq -r '.master."x86_64-linux".shasum')
+          sed -i "s|ZIG_URL_PLACEHOLDER|$ZIG_URL|" packaging/flatpak/io.github.zahrawi.badi.yml
+          sed -i "s|ZIG_SHA_PLACEHOLDER|$ZIG_SHA|" packaging/flatpak/io.github.zahrawi.badi.yml
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: badi.flatpak
+          manifest-path: packaging/flatpak/io.github.zahrawi.badi.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+
+      - name: Upload Flatpak Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: badi-flatpak
+          path: badi.flatpak

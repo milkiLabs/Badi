@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.zahrawi.badi</id>
+  <name>Badi</name>
+  <summary>A fast, keyboard-driven application launcher built with Zig and Qt</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>
+      Badi is a very fast application launcher built with Zig and Qt. It offers a keyboard-driven
+      interface for fuzzy-searching and running applications quickly and efficiently.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.zahrawi.badi.desktop</launchable>
+  <url type="homepage">https://github.com/zahrawi/badi</url>
+  <url type="bugtracker">https://github.com/zahrawi/badi/issues</url>
+</component>

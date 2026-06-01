@@ -1,0 +1,47 @@
+app-id: io.github.zahrawi.badi
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+command: badi
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+modules:
+  - name: zig
+    buildsystem: simple
+    build-commands:
+      - install -D zig /app/bin/zig
+      - cp -r lib /app/lib/zig
+      - ln -s /app/lib/zig /app/bin/lib
+    sources:
+      - type: archive
+        url: https://ziglang.org/builds/zig-x86_64-linux-0.17.0-dev.639+284ab0ad8.tar.xz
+        sha256: b95c7cd06446e7ac83b34554c70f1f99a92d1abab1ff2d222b2b2a4ca0fd250d
+
+  - name: libqt6zig
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/vendor/libqt6zig
+      - cp -r * /app/vendor/libqt6zig/
+    sources:
+      - type: git
+        url: https://github.com/rcalixte/libqt6zig
+        commit: 5682682b84ddbac22003b09bb65011292b318e35
+
+  - name: badi
+    buildsystem: simple
+    build-commands:
+      - sed -i 's|url = "git+https://github.com/rcalixte/libqt6zig#5682682b84ddbac22003b09bb65011292b318e35"|path = "/app/vendor/libqt6zig"|' build.zig.zon
+      - sed -i '/\.hash = /d' build.zig.zon
+      # Link Qt6 properly if needed by KDE SDK
+      - /app/bin/zig build -Doptimize=ReleaseFast -p /app -Dqt6-extra-path=/usr/include/Qt6
+      - install -Dm644 assets/badi.desktop /app/share/applications/io.github.zahrawi.badi.desktop
+      - install -Dm644 assets/badi.svg /app/share/icons/hicolor/scalable/apps/io.github.zahrawi.badi.svg
+      - sed -i 's/Icon=badi/Icon=io.github.zahrawi.badi/' /app/share/applications/io.github.zahrawi.badi.desktop
+      - install -Dm644 packaging/flatpak/io.github.zahrawi.badi.metainfo.xml /app/share/metainfo/io.github.zahrawi.badi.metainfo.xml
+    sources:
+      - type: dir
+        path: .
