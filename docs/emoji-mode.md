@@ -55,17 +55,12 @@ caller gets exactly the selected value.
 ### `.type_keys`
 
 Synthesizes the glyph as keystrokes via `wtype -- <glyph>`. Requires
-`wtype` to be installed. Badi runs only on Wayland, so `wtype` is
-the only typer supported.
+`wtype` to be installed.
 
-**Focus dance.** `wtype` types into the *currently focused* window.
-Badi is itself focused while running, so we close Badi first and
-run `wtype` from a small `sh -c` helper that sleeps 100 ms before
-invoking it. That gives the window manager a moment to restore
-focus to whatever app was focused before Badi opened (the terminal,
-the text editor, etc.), and the glyph lands there. The helper
-outlives Badi because it's a detached process, so Badi can exit
-immediately after launching it.
+Badi is itself focused while running, so we close Badi first; the
+window manager restores focus to whatever app was focused before
+Badi opened (the terminal, the text editor, etc.), and `wtype`
+types the glyph there.
 
 If `wtype` is not installed, falls back to the clipboard via
 `.copy`.
