@@ -210,6 +210,25 @@ the next person doesn't have to rediscover them:
    `$QTDIR/bin` first in `PATH` so the plugin can also locate
    `moc`, `rcc`, and the Xcb platform plugin correctly.
 
+7. **Upstream artifacts always have the `.AppImage` suffix, so
+   `PATH` lookup by basename fails.** The downloads land as
+   `tools/linuxdeploy.AppImage`, `tools/linuxdeploy-plugin-qt.AppImage`,
+   and `tools/appimagetool.AppImage`. If the next step does
+   `linuxdeploy --appdir …` and `tools/` is in `PATH`, the shell
+   reports `linuxdeploy: command not found` (exit 127) because
+   `linuxdeploy` is not the actual filename. Either invoke with
+   the full `.AppImage` suffix or create short-name symlinks
+   (`ln -sf linuxdeploy.AppImage linuxdeploy`). The CI workflow
+   does the latter, and so does the local recipe in step 3.
+
+8. **`QMAKE` (and any other var derived from `QT_ROOT_DIR`) cannot
+   be set in the job-level `env:` block.** GitHub Actions validates
+   `env.*` expressions statically and `QT_ROOT_DIR` is exported by
+   the `install-qt-action` *step* — so at job-level it doesn't
+   exist yet, and the workflow file is rejected with
+   `Unrecognized named-value: 'env'`. Set these vars on the step
+   that actually uses them (the "Build AppImage" step in our case).
+
 ## Tools used
 
 - [linuxdeploy](https://github.com/linuxdeploy/linuxdeploy) — generic

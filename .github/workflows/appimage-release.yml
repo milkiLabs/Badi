@@ -36,6 +36,26 @@ jobs:
       - name: Build
         run: zig build -Doptimize=ReleaseFast -Dqt6-extra-path=$QT_ROOT_DIR -Dqt6-lib-path=$QT_ROOT_DIR/lib
 
+      - name: Install runtime dependencies
+        # `badi` is linked against libunwind (see build.zig:41), but the
+        # `install-qt-action` runtime deps don't include it. Without this,
+        # the dynamic linker fails to resolve libunwind.so.1 when linuxdeploy
+        # runs `ldd` and aborts with `Failed to run ldd: exited with code 6`.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libunwind8
+
+      - name: Debug binary deps
+        # Echo the actual ldd output so a future failure mode is obvious
+        # from the CI log without needing to reproduce locally.
+        run: |
+          echo "=== file ==="
+          file AppDir/usr/bin/badi || true
+          echo "=== readelf -d ==="
+          readelf -d AppDir/usr/bin/badi | head -40 || true
+          echo "=== ldd ==="
+          ldd AppDir/usr/bin/badi 2>&1 || echo "ldd exit: $?"
+
       - name: Stage AppImage
         run: |
           mkdir -p AppDir/usr/bin

@@ -66,12 +66,14 @@ env:
   DISABLE_PLUGIN_QT_TRANSLATIONS: "1"  # skip qt_*.qm
   LINUXDEPLOY_OUTPUT_VERSION: ${{ github.ref_name }}  # embed tag in filename
   NO_STRIP: "1"                        # work around old bundled strip
-  QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake             # force Qt6 detection
 ```
 
-The "Build AppImage" step additionally overrides `QTDIR` and prepends
-`$QT_ROOT_DIR/bin` to `PATH` so the Qt plugin can locate `qmake6`,
-`moc`, etc.
+`QMAKE`, `QTDIR`, and the `PATH` override are set on the
+**"Build AppImage" step itself**, not at the job level, because
+they depend on `QT_ROOT_DIR` which is only exported by the
+`install-qt-action` step (i.e. after job-level env is processed).
+Setting them at job level triggers a "Unrecognized named-value:
+'env.QT_ROOT_DIR'" static-analysis error.
 
 ### AppImage-specific steps
 
@@ -83,10 +85,13 @@ After the standard `zig build`, the workflow runs:
 2. **Download linuxdeploy tools** — fetches
    `linuxdeploy-x86_64.AppImage`, `linuxdeploy-plugin-qt-x86_64.AppImage`,
    and `appimagetool-940-x86_64.AppImage` from the upstream
-   `continuous` releases.
-3. **Build AppImage** — runs `linuxdeploy` with `--plugin qt
+   `continuous` releases, `chmod +x` them, then creates short-name
+   symlinks (`linuxdeploy`, `linuxdeploy-plugin-qt`, `appimagetool`)
+   so the binaries can be invoked by basename via `PATH`.
+3. **Build AppImage** — sets `QTDIR`, `QMAKE`, and the `PATH` override
+   on the step, then runs `linuxdeploy` with `--plugin qt
    --output appimage` to bundle the Qt 6 libraries and platform
-   plugins, then repack the AppDir as a squashfs AppImage.
+   plugins and repack the AppDir as a squashfs AppImage.
 4. **Verify AppImage** — sanity-checks the file with `ls` + `file`.
 5. **Upload artifact** — as a GitHub Actions artifact
    (`name: Badi-<tag>-x86_64`).
@@ -101,7 +106,9 @@ After the standard `zig build`, the workflow runs:
 | `DISABLE_PLUGIN_QT_TRANSLATIONS=1` | Saves several MB by skipping `qt_*.qm` files (Badi is English-only).                                                                                         |
 | `LINUXDEPLOY_OUTPUT_VERSION`       | Embeds the tag in the AppImage filename so `Badi-v1.0.0-x86_64.AppImage` lands in the release.                                                                |
 | `NO_STRIP=1`                       | The `strip` bundled inside the linuxdeploy AppImage is too old to handle the `.relr.dyn` ELF section used by current glibc-built libraries.                |
-| `QMAKE`                            | Forces `linuxdeploy-plugin-qt` to query the correct `qmake`. Without this it may silently pick up a Qt5 `qmake` from the runner's `PATH`.                  |
+| `QMAKE` *(step-level)*             | Forces `linuxdeploy-plugin-qt` to query the correct `qmake`. Without this it may silently pick up a Qt5 `qmake` from the runner's `PATH`.                  |
+| `QTDIR` *(step-level)*             | Standard convention; some tools look for `$QTDIR/bin/qmake`. The plugin already prefers `$QMAKE` when set.                                                  |
+| `PATH` override *(step-level)*     | Prepends `$QT_ROOT_DIR/bin` and `$GITHUB_WORKSPACE/tools` so `qmake6` / `moc` and the linuxdeploy binaries are resolved by basename.                       |
 
 ## Pinning the linuxdeploy versions
 
