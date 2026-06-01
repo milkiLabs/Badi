@@ -13,6 +13,7 @@ Badi in arabic means Starter or initiator. Starts programs and commands.
 | **Apps** | Default (no pipe) | Scans `.desktop` files, lets you search and launch apps |
 | **Piped** | `stdin` is a pipe | Streams lines from stdin, filter and select one (dmenu-style) |
 | **Prefix** | Type a trigger (e.g. `g `) | Runs a shell command template with your query |
+| **Prompt** | `--prompt [LABEL]` | Shows a labeled input; the typed text is written to stdout on Enter |
 
 ## Prerequisites
 
@@ -101,7 +102,28 @@ docs/
 ```bash
 badi                         # Launch app selector
 echo -e "foo\nbar\nbaz" | badi   # Piped mode (dmenu-style)
+name=$(badi --prompt "Name: ")    # Prompt mode — for shell scripts
 ```
+
+### Prompt Mode
+
+For shell scripts that need a free-form text answer. Whatever the user types
+is written to stdout on Enter; Escape cancels with exit code 1.
+
+```bash
+name=$(badi --prompt "Name: ")
+repo=$(badi --prompt "Repo: " --default "badi")
+token=$(badi --prompt "API token: " --password)
+```
+
+| Flag             | Effect                                                       |
+| ---------------- | ------------------------------------------------------------ |
+| `--prompt LABEL` | Enter prompt mode. `LABEL` is shown as an inline chip.       |
+| `--default TEXT` | Pre-fill the input and select all.                           |
+| `--password`     | Mask the input characters.                                   |
+| `--allow-empty`  | Permit Enter on an empty input (rejected by default).        |
+
+See [docs/prompt-mode.md](docs/prompt-mode.md) for details.
 
 ### Prefix Actions
 
@@ -121,6 +143,8 @@ Customize colors, fonts, and dimensions in `~/.config/badi/theme.json`. See [doc
 | Topic                           | Link                                                                 |
 | ------------------------------- | -------------------------------------------------------------------- |
 | Architecture and modes          | [docs/architecture.md](docs/architecture.md)                         |
+| Prompt mode (script input)      | [docs/prompt-mode.md](docs/prompt-mode.md)                           |
+| Piped mode (dmenu-style)        | [docs/piped-mode.md](docs/piped-mode.md)                             |
 | Codebase structure              | [docs/codebase-structure.md](docs/codebase-structure.md)             |
 | How the API differs from Qt C++ | [libqt6zig FAQ Q3](https://github.com/rcalixte/libqt6zig#faq)        |
 | More example applications       | [libqt6zig-examples](https://github.com/rcalixte/libqt6zig-examples) |

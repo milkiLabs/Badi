@@ -2,26 +2,35 @@
 
 ## Overview
 
-Badi operates in one of three modes:
+Badi operates in one of four modes:
 
 ```
-┌──────────────────────────────────────────────────┐
-│                   Badi Startup                    │
-├──────────────────────────────────────────────────┤
-│                                                   │
-│  stdin.stat().kind == .named_pipe?                 │
-│       │                                           │
-│       ├── YES ──→ Piped Mode                     │
-│       │            show window immediately        │
-│       │            QSocketNotifier on stdin       │
-│       │            stream lines as they arrive    │
-│       │                                           │
-│       └── NO ───→ Apps Mode                     │
-│                    load .desktop files sync       │
-│                    populate list                  │
-│                    show window                    │
-│                                                   │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                    Badi Startup                       │
+├──────────────────────────────────────────────────────┤
+│                                                       │
+│  --prompt flag present?                                │
+│       │                                               │
+│       ├── YES ──→ Prompt Mode                        │
+│       │            shrink window to 80px              │
+│       │            hide list, show only input + label │
+│       │            ignore stdin                       │
+│       │                                               │
+│       └── NO ───┐                                     │
+│                ▼                                     │
+│       stdin.stat().kind == .named_pipe?              │
+│                │                                      │
+│                ├── YES ──→ Piped Mode                │
+│                │            show window immediately  │
+│                │            QSocketNotifier on stdin  │
+│                │            stream lines as they arrive│
+│                │                                      │
+│                └── NO ───→ Apps Mode                 │
+│                             load .desktop files sync  │
+│                             populate list             │
+│                             show window               │
+│                                                       │
+└──────────────────────────────────────────────────────┘
 ```
 
 ## Piped Mode
@@ -99,11 +108,42 @@ The active prefix is stored as a `config.Action` in `AppMode.prefix`.
   - `onModelData`
 - `src/ui/callbacks.zig` — `exitPrefixMode()` helper
 
+## Prompt Mode
+
+Entered when `--prompt` is passed on the command line. The user types into
+the input field; whatever they type is written to stdout on Enter. Used by
+shell scripts that need a free-form text answer.
+
+### Startup sequence
+
+1. Parse `--prompt` (and `--default`, `--password`, `--allow-empty`) from argv.
+2. Build the same UI as Apps/Piped, then:
+   - Override `main_widget.SetFixedSize2(width, 80)` for a single-row window.
+   - Set the badge label (if any) and show it.
+   - Pre-fill the input + `SelectAll` (if `--default` was given).
+   - Toggle `SetEchoMode(Password)` if `--password` was given.
+   - `list.Hide()` and `no_results.Hide()` — the layout treats them as
+     zero-size, so the window collapses to just the input row.
+3. Show the window — the model is empty (no list to populate) and no
+   `QSocketNotifier` is installed (stdin is ignored).
+4. On Enter, `launcher.executeSelection` reads the `QLineEdit` text, writes
+   `text + "\n"` to stdout, sets `exit_code = 0`, and closes the window.
+5. On Escape, `callbacks.onKeyPress` sets `exit_code = 1` and closes.
+
+### Key files
+
+- `src/main.zig` — `parsePromptArgs` and prompt-mode UI setup
+- `src/core/launcher.zig` — `.prompt` case in `executeSelection`
+- `src/ui/callbacks.zig` — prompt-mode short-circuit in `onTextChanged`,
+  `exit_code = 1` on Escape
+- `src/ui/window.zig` — empty model and hidden list for prompt mode
+
 ## Exit Codes
 
-| Condition                          | Exit code |
-| ---------------------------------- | --------- |
-| Item selected (Enter/double-click) | 0         |
-| Escape pressed in piped mode       | 1         |
-| Escape pressed in apps mode        | 0         |
-| Window closed via window manager   | 0         |
+| Condition                            | Exit code |
+| ------------------------------------ | --------- |
+| Item selected (Enter/double-click)   | 0         |
+| Escape pressed in piped mode         | 1         |
+| Escape pressed in prompt mode        | 1         |
+| Escape pressed in apps mode          | 0         |
+| Window closed via window manager     | 0         |
