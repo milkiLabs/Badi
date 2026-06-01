@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     name: Build and Release AppImage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
 
@@ -50,11 +50,11 @@ jobs:
         # from the CI log without needing to reproduce locally.
         run: |
           echo "=== file ==="
-          file AppDir/usr/bin/badi || true
+          file zig-out/bin/badi || true
           echo "=== readelf -d ==="
-          readelf -d AppDir/usr/bin/badi | head -40 || true
+          readelf -d zig-out/bin/badi | head -40 || true
           echo "=== ldd ==="
-          ldd AppDir/usr/bin/badi 2>&1 || echo "ldd exit: $?"
+          ldd zig-out/bin/badi 2>&1 || echo "ldd exit: $?"
 
       - name: Stage AppImage
         run: |

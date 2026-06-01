@@ -36,6 +36,7 @@ To build an AppImage locally you need everything required to build
 | Qt 6 dev headers      | Compiles `badi` (Core, Gui, Widgets)                     | `pacman -S qt6-base`      | `apt install qt6-base-dev`     |
 | `gcc`                 | Resolves `libstdc++` at link time                        | `pacman -S gcc`           | `apt install gcc`               |
 | `librsvg2-bin`        | Renders the `.svg` icon to `.png`                        | `pacman -S librsvg`       | `apt install librsvg2-bin`      |
+| `libunwind`           | Runtime dep of the `badi` binary (linked by Zig/llvm)    | `pacman -S libunwind`     | `apt install libunwind8`        |
 | FUSE                  | Lets the AppImage tools run as AppImages on your system | `pacman -S fuse2`         | `apt install libfuse2`          |
 | `curl`                | Downloads the linuxdeploy tools                         | `pacman -S curl`          | `apt install curl`              |
 
@@ -228,6 +229,18 @@ the next person doesn't have to rediscover them:
    exist yet, and the workflow file is rejected with
    `Unrecognized named-value: 'env'`. Set these vars on the step
    that actually uses them (the "Build AppImage" step in our case).
+
+9. **Missing `libunwind` on the runner aborts `ldd` with exit 6.**
+   `badi` is linked against `libunwind` (`build.zig:41`) for
+   exception handling. The `install-qt-action`'s `install-deps: "true"`
+   installs Qt's runtime deps but not `libunwind8`, and the
+   default `ubuntu-latest` image doesn't ship it either. The
+   dynamic linker can't resolve `libunwind.so.1` → `ldd` exits 6
+   → `linuxdeploy` throws `std::runtime_error("Failed to run ldd:
+   exited with code 6")` → step exits 127. Fix: `apt-get install
+   -y libunwind8` on the runner (the CI workflow does this; for
+   local builds just install `libunwind` from your package
+   manager).
 
 ## Tools used
 

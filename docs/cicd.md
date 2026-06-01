@@ -79,23 +79,33 @@ Setting them at job level triggers a "Unrecognized named-value:
 
 After the standard `zig build`, the workflow runs:
 
-1. **Stage AppImage** — copies `zig-out/bin/badi`, `assets/badi.desktop`,
+1. **Install runtime dependencies** — `apt-get install -y libunwind8`.
+   `badi` is linked against `libunwind` (see `build.zig:41`), but the
+   `install-qt-action` runtime deps don't include it. Without this,
+   the dynamic linker fails to resolve `libunwind.so.1` when
+   linuxdeploy runs `ldd` and aborts with
+   `Failed to run ldd: exited with code 6`.
+2. **Debug binary deps** — echoes `file`, `readelf -d`, and `ldd`
+   output for the staged binary so the next time linuxdeploy
+   misbehaves the root cause is in the CI log without a local
+   reproduction.
+3. **Stage AppImage** — copies `zig-out/bin/badi`, `assets/badi.desktop`,
    and the icon assets into an `AppDir/` tree that mirrors a FHS
    install.
-2. **Download linuxdeploy tools** — fetches
+4. **Download linuxdeploy tools** — fetches
    `linuxdeploy-x86_64.AppImage`, `linuxdeploy-plugin-qt-x86_64.AppImage`,
    and `appimagetool-940-x86_64.AppImage` from the upstream
    `continuous` releases, `chmod +x` them, then creates short-name
    symlinks (`linuxdeploy`, `linuxdeploy-plugin-qt`, `appimagetool`)
    so the binaries can be invoked by basename via `PATH`.
-3. **Build AppImage** — sets `QTDIR`, `QMAKE`, and the `PATH` override
+5. **Build AppImage** — sets `QTDIR`, `QMAKE`, and the `PATH` override
    on the step, then runs `linuxdeploy` with `--plugin qt
    --output appimage` to bundle the Qt 6 libraries and platform
    plugins and repack the AppDir as a squashfs AppImage.
-4. **Verify AppImage** — sanity-checks the file with `ls` + `file`.
-5. **Upload artifact** — as a GitHub Actions artifact
+6. **Verify AppImage** — sanity-checks the file with `ls` + `file`.
+7. **Upload artifact** — as a GitHub Actions artifact
    (`name: Badi-<tag>-x86_64`).
-6. **GitHub Release** — attaches the AppImage to the release.
+8. **GitHub Release** — attaches the AppImage to the release.
 
 ### Why these env vars are set
 
