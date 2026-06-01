@@ -289,23 +289,10 @@ fn prefixQuery() []const u8 {
 /// Writes name pointers from the active source (apps or piped) into `buf`.
 /// Returns the number of pointers written.
 fn buildNamePointers(app: *context.AppState, buf: [][]const u8) usize {
-    switch (app.mode) {
-        .apps => {
-            const apps_ = app.apps();
-            const count = @min(apps_.len, buf.len);
-            for (apps_[0..count], 0..) |entry, i| {
-                buf[i] = entry.name;
-            }
-            return count;
-        },
-        .piped => {
-            const items = app.piped_items.items;
-            const count = @min(items.len, buf.len);
-            for (items[0..count], 0..) |line, i| {
-                buf[i] = line;
-            }
-            return count;
-        },
-        .prefix => return 0,
+    const apps_ = app.apps();
+    const count = @min(apps_.len, buf.len);
+    for (apps_[0..count], 0..) |entry, i| {
+        buf[i] = entry.name;
     }
+    return count;
 }
