@@ -8,3 +8,4 @@ pub const view = @import("view.zig");
 pub const status = @import("status.zig");
 pub const piped_view = @import("piped_view.zig");
 pub const callbacks = @import("callbacks/mod.zig");
+pub const wayland = @import("wayland.zig");

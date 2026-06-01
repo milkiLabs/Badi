@@ -4,7 +4,6 @@
 // the exit code, `destroy` releases resources.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const qt6 = @import("libqt6zig");
 const config = @import("../config/mod.zig");
 const state = @import("../state/mod.zig");
@@ -13,6 +12,7 @@ const ui = @import("../ui/mod.zig");
 pub const cli = @import("cli.zig");
 const startup = @import("startup.zig");
 const exit_code = @import("exit_code.zig");
+const single_instance = @import("single_instance.zig");
 
 pub const Settings = cli.Settings;
 
@@ -25,7 +25,6 @@ pub const App = struct {
     state: state.AppState,
     argv: [][:0]u8,
     qapp: qt6.QApplication,
-    single_instance_server: ?std.Io.net.Server,
 
     /// Builds the app. Loads theme + config, constructs widgets, wires
     /// signals, loads .desktop apps (in apps mode). Must be paired with
@@ -38,17 +37,8 @@ pub const App = struct {
         // Check single instance if in apps or emoji mode.
         const mode = startup.resolveMode(init.io, settings);
         var single_instance_server: ?std.Io.net.Server = null;
-        if (mode == .apps or mode == .emoji) {
-            if (builtin.os.tag == .linux) {
-                const uid = std.os.linux.getuid();
-                var path_buf: [128]u8 = undefined;
-                const path = try std.fmt.bufPrint(&path_buf, "\x00badi-single-instance-{}", .{uid});
-                const addr = try std.Io.net.UnixAddress.init(path);
-                single_instance_server = addr.listen(init.io, .{}) catch |err| switch (err) {
-                    error.AddressInUse => return error.AlreadyRunning,
-                    else => return err,
-                };
-            }
+        if (single_instance.enabled(mode)) {
+            single_instance_server = try single_instance.listenReplacingExisting(init.io);
         }
         errdefer if (single_instance_server) |*server| server.deinit(init.io);
 
@@ -72,6 +62,8 @@ pub const App = struct {
             .on_model_row_count = ui.model.onModelRowCount,
             .on_model_data = ui.model.onModelData,
             .on_item_double_clicked = ui.callbacks.onItemDoubleClicked,
+            .on_input_focus_out = ui.callbacks.onInputFocusOut,
+            .on_focus_guard_timeout = ui.callbacks.onFocusGuardTimeout,
             .on_stdin_activated = ui.callbacks.onStdinActivated,
         });
 
@@ -80,6 +72,8 @@ pub const App = struct {
         // create returns, which would dangle the global. `run` sets it
         // once `self` is in its final location.
         var app_state = try startup.buildState(gpa, init.io, init.environ_map, widgets, settings);
+        app_state.single_instance_server = single_instance_server;
+        single_instance_server = null;
         errdefer app_state.deinit();
 
         return .{
@@ -91,7 +85,6 @@ pub const App = struct {
             .state = app_state,
             .argv = argv,
             .qapp = qapp,
-            .single_instance_server = single_instance_server,
         };
     }
 
@@ -103,8 +96,20 @@ pub const App = struct {
         state.global.set(&self.state);
 
         self.state.mode = startup.resolveMode(self.io, self.settings);
+        if (self.state.single_instance_server) |*server| {
+            const notifier = qt6.QSocketNotifier.New4(
+                server.socket.handle,
+                qt6.qsocketnotifier_enums.Type.Read,
+                self.state.ui.main,
+            );
+            notifier.OnActivated(ui.callbacks.onReplacementRequested);
+        }
         startup.prepareInitialFrame(&self.state, self.arena, self.settings);
+        ui.wayland.setup(self.state.ui.main);
         self.state.ui.main.Show();
+        self.state.ui.main.Raise();
+        self.state.ui.main.ActivateWindow();
+        self.state.ui.focus_guard.Start2();
         _ = qt6.QApplication.Exec();
         return exit_code.resolve(&self.state);
     }
@@ -113,9 +118,6 @@ pub const App = struct {
     /// deinit'd first (frees Zig-owned data), then the QApplication
     /// (which frees all Qt-owned widgets), then the qt6 init buffer.
     pub fn destroy(self: *App) void {
-        if (self.single_instance_server) |*server| {
-            server.deinit(self.io);
-        }
         self.state.deinit();
         self.qapp.Delete();
         qt6.deinit(self.gpa, self.argv);

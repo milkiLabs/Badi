@@ -25,6 +25,7 @@ pub fn buildState(
         .allocator = gpa,
         .io = io,
         .ui = widgets,
+        .single_instance_server = null,
         .mode = .apps, // refined in resolveMode at run time
         .exit_code = null,
         .app_list = null,

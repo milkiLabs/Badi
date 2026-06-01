@@ -28,6 +28,20 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("Qt6Core", .{});
     exe.root_module.linkSystemLibrary("Qt6Gui", .{});
     exe.root_module.linkSystemLibrary("Qt6Widgets", .{});
+    exe.root_module.linkSystemLibrary("LayerShellQtInterface", .{});
+    exe.root_module.link_libcpp = true;
+
+    exe.root_module.addIncludePath(.{ .cwd_relative = "/usr/include/qt6" });
+    exe.root_module.addIncludePath(.{ .cwd_relative = "/usr/include/qt6/QtGui" });
+    exe.root_module.addIncludePath(.{ .cwd_relative = "/usr/include/qt6/QtCore" });
+    if (qt6_extra_path.len > 0) {
+        exe.root_module.addIncludePath(.{ .cwd_relative = qt6_extra_path });
+    }
+
+    exe.root_module.addCSourceFile(.{
+        .file = b.path("src/wayland_layer_shell.cpp"),
+        .flags = &.{ "-std=c++17", "-fPIC" },
+    });
 
     // libqt6zig currently adds libc++ linkage, but the generated Qt wrappers use
     // libstdc++ symbols on Linux. Add the concrete libstdc++.so to avoid link
@@ -58,6 +72,7 @@ pub fn build(b: *std.Build) void {
         "qlistview",
         "qprocess",
         "qsocketnotifier",
+        "qtimer",
         "qvariant",
         "qwidget",
     };

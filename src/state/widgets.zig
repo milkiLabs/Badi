@@ -12,4 +12,5 @@ pub const Widgets = struct {
     list: qt6.QListView,
     model: qt6.QAbstractListModel,
     no_results: qt6.QLabel,
+    focus_guard: qt6.QTimer,
 };

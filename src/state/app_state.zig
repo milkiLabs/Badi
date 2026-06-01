@@ -25,6 +25,7 @@ pub const AppState = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
     ui: Widgets,
+    single_instance_server: ?std.Io.net.Server,
 
     // Mode
     mode: AppMode,
@@ -78,6 +79,7 @@ pub const AppState = struct {
     }
 
     pub fn deinit(self: *AppState) void {
+        if (self.single_instance_server) |*server| server.deinit(self.io);
         if (self.app_list) |*list| list.deinit();
         if (self.emojis) |*data| data.deinit(self.allocator);
         for (self.piped_items.items) |item| self.allocator.free(item);

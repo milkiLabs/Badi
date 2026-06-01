@@ -5,10 +5,7 @@ const app = @import("app/mod.zig");
 
 pub fn main(init: std.process.Init) !u8 {
     const settings = try app.cli.parse(init.arena.allocator(), init.minimal.args);
-    var instance = app.App.create(init, settings) catch |err| switch (err) {
-        error.AlreadyRunning => return 0,
-        else => return err,
-    };
+    var instance = try app.App.create(init, settings);
     defer instance.destroy();
     return instance.run();
 }
