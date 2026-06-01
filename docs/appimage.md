@@ -96,6 +96,12 @@ curl -fsSL -o appimagetool.AppImage \
   https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage
 
 chmod +x *.AppImage
+
+# Short-name symlinks so the binaries can be invoked by basename.
+# The upstream artifacts always carry the `.AppImage` suffix.
+ln -sf linuxdeploy.AppImage         linuxdeploy
+ln -sf linuxdeploy-plugin-qt.AppImage linuxdeploy-plugin-qt
+ln -sf appimagetool.AppImage        appimagetool
 ```
 
 > The asset name for `appimagetool` includes a build number suffix
