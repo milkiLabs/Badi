@@ -53,5 +53,23 @@ pub fn executeSelection() void {
             _ = qt6.QProcess.StartDetached22(app.allocator, "sh", &[_][]const u8{ "-c", final_cmd });
             _ = app.ui.main.Close();
         },
+        .prompt => |cfg| {
+            // Read the answer from the input box
+            const text_ptr = app.ui.input.Text(app.allocator);
+            defer app.allocator.free(text_ptr);
+            const answer = text_ptr;
+
+            // Reject empty submits by default — matches `read` semantics and
+            // prevents accidental blank values flowing into scripts.
+            if (answer.len == 0 and !cfg.allow_empty) return;
+
+            const stdout = std.Io.File.stdout();
+            var buf: [8192]u8 = undefined;
+            var writer = stdout.writer(app.io, &buf);
+            writer.interface.print("{s}\n", .{answer}) catch {};
+            writer.interface.flush() catch {};
+            app.exit_code = 0;
+            _ = app.ui.main.Close();
+        },
     }
 }

@@ -17,12 +17,28 @@ pub const DesktopEntry = desktop.DesktopEntry;
 pub const DesktopAppList = desktop.DesktopAppList;
 pub const Action = config.Action;
 
-/// The three modes Badi can operate in.
-/// `prefix` carries the active action config; the others carry no data.
+/// Configures a free-form text prompt. Triggered with `--prompt [LABEL]` on
+/// the command line. The user types into the input field and the typed text
+/// is written to stdout on Enter.
+pub const PromptConfig = struct {
+    /// Inline label shown in the badge before the input field. Empty → no badge.
+    label: []const u8,
+    /// Pre-filled into the input on open, selected-all so typing overwrites.
+    default_value: []const u8,
+    /// When true, the input is masked (Password echo mode).
+    password: bool,
+    /// When false, Enter on an empty input is a no-op (matches `read`).
+    allow_empty: bool,
+};
+
+/// The four modes Badi can operate in.
+/// `prefix` carries the active action config; `prompt` carries prompt config;
+/// the others carry no data.
 pub const AppMode = union(enum) {
     apps: void,
     piped: void,
     prefix: Action,
+    prompt: PromptConfig,
 };
 
 /// All mutable application state. Widgets are stored as opaque Qt handles —
@@ -64,6 +80,8 @@ pub const AppState = struct {
 
     /// Resolves the current selection's data from the already-synced selected_index.
     /// Does not touch Qt widgets — pure data lookup using visible_indices.
+    /// Returns null in `prefix` and `prompt` modes — those read from the input
+    /// directly in `launcher.executeSelection` because their data is not list-backed.
     pub fn currentSelectionData(self: *const AppState) ?Selection {
         const selected = self.selected_index orelse return null;
         if (selected >= self.visible_indices.items.len) return null;
@@ -72,7 +90,7 @@ pub const AppState = struct {
         return switch (self.mode) {
             .apps => .{ .data = self.apps()[source_index].exec },
             .piped => .{ .data = self.piped_items.items[source_index] },
-            .prefix => null,
+            .prefix, .prompt => null,
         };
     }
 

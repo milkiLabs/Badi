@@ -13,6 +13,7 @@ pub fn onModelRowCount(_: qt6.QAbstractListModel, parent: qt6.QModelIndex) callc
     const app = context.state();
     return switch (app.mode) {
         .prefix => if (prefixQuery().len == 0) 0 else 1,
+        .prompt => 0, // prompt mode has no list — input is the only widget
         else => @intCast(app.visible_indices.items.len),
     };
 }
@@ -33,6 +34,7 @@ pub fn onModelData(_: qt6.QAbstractListModel, index: qt6.QModelIndex, role: i32)
             const source_index = sourceIndexFromModelRow(row) orelse return qt6.QVariant.New();
             return qt6.QVariant.New24(app.piped_items.items[source_index]);
         },
+        .prompt => return qt6.QVariant.New(),
         .prefix => |cfg| {
             const query = prefixQuery();
             if (row != 0 or query.len == 0) return qt6.QVariant.New();
@@ -46,7 +48,7 @@ pub fn onModelData(_: qt6.QAbstractListModel, index: qt6.QModelIndex, role: i32)
 /// Sets the no_results label text and visibility based on current app state.
 /// Single source of truth — call after any state change that affects it.
 pub fn updateNoResults(app: *context.AppState) void {
-    if (app.mode == .prefix) {
+    if (app.mode == .prefix or app.mode == .prompt) {
         app.ui.no_results.Hide();
         return;
     }
@@ -67,7 +69,7 @@ pub fn updateNoResults(app: *context.AppState) void {
                 app.ui.no_results.SetText("No results");
             }
         },
-        .prefix => unreachable,
+        .prefix, .prompt => unreachable, // both handled by the early return above
     }
     app.ui.no_results.Show();
 }
@@ -75,6 +77,10 @@ pub fn updateNoResults(app: *context.AppState) void {
 /// Recomputes the filtered source rows and asks Qt's model-view layer to repaint.
 pub fn filterList(query: []const u8) void {
     const app = context.state();
+
+    // Prompt mode has no list — the model is empty and the list widget is hidden.
+    // Nothing to filter; just no-op so callers don't have to branch.
+    if (app.mode == .prompt) return;
 
     app.ui.model.BeginResetModel();
 
@@ -96,7 +102,7 @@ pub fn filterList(query: []const u8) void {
                     app.visible_indices.append(app.allocator, source_index) catch break;
                 }
             },
-            .prefix => {},
+            .prefix, .prompt => {}, // prompt was already early-returned; prefix is a one-line action, no list to fill
         }
     } else {
         // Non-empty query: score, rank, and sort
@@ -114,7 +120,7 @@ pub fn filterList(query: []const u8) void {
                 query,
                 &results_buf,
             ),
-            .prefix => 0,
+            .prefix, .prompt => 0, // prompt was already early-returned; prefix is a one-line action
         };
         for (results_buf[0..n]) |r| {
             app.visible_indices.append(app.allocator, r.index) catch break;
@@ -123,6 +129,7 @@ pub fn filterList(query: []const u8) void {
 
     const has_results = switch (app.mode) {
         .prefix => query.len > 0,
+        .prompt => false,
         else => app.visible_indices.items.len > 0,
     };
 
@@ -256,6 +263,7 @@ fn resultCount() usize {
     const app = context.state();
     return switch (app.mode) {
         .prefix => if (prefixQuery().len == 0) 0 else 1,
+        .prompt => 0,
         else => app.visible_indices.items.len,
     };
 }

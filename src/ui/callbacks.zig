@@ -24,6 +24,15 @@ pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
     const app = context.state();
     const query: []const u8 = text[0..std.mem.len(text)];
 
+    // Prompt mode: the input is the answer, not a launcher query. No prefix
+    // detection, no URL detection, no filtering. Just record the current text
+    // (handy for diagnostics) and return.
+    if (app.mode == .prompt) {
+        app.current_query.clearRetainingCapacity();
+        app.current_query.appendSlice(app.allocator, query) catch {};
+        return;
+    }
+
     // If we're in the dynamic URL prefix mode and the user backspaces the scheme/url, revert to apps mode.
     if (app.mode == .prefix) {
         if (std.mem.eql(u8, app.mode.prefix.name, "Browser")) {
@@ -145,6 +154,10 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
             exitPrefixMode(app);
             event.Accept();
             return;
+        }
+        // In prompt mode, Escape cancels — surface that via exit code 1.
+        if (app.mode == .prompt) {
+            app.exit_code = 1;
         }
         _ = app.ui.main.Close();
         event.Accept();
