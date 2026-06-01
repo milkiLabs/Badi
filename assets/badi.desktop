@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Badi
+GenericName=Application Launcher
+Comment=A fast, keyboard-driven application launcher built with Zig and Qt
+Exec=badi %u
+Icon=badi
+Terminal=false
+StartupNotify=true
+StartupWMClass=Badi
+Categories=Utility;
+Keywords=launcher;menu;search;app;fuzzy;dmenu;run;command;

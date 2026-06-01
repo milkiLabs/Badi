@@ -26,7 +26,10 @@ Start here, in this order:
   behavior, and exit codes.
 - **[stdin-detection.md](stdin-detection.md)** — TTY vs pipe vs
   `/dev/null` detection via `stat().kind`.
-- **[cicd.md](cicd.md)** — release build workflow on tag push.
+- **[cicd.md](cicd.md)** — release build workflow on tag push
+  (tarball + AppImage).
+- **[appimage.md](appimage.md)** — building and troubleshooting the
+  AppImage locally.
 
 ## User-facing configuration
 
@@ -50,4 +53,4 @@ The audience for each doc:
 | Adding a new signal  | ui/callbacks/* (in code), modes.md, architecture.md |
 | Debugging rendering  | performance.md                                    |
 | Configuring Badi     | user-docs/* (linked from README.md)                |
-| Releasing            | cicd.md                                           |
+| Releasing            | cicd.md, appimage.md                              |

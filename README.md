@@ -67,7 +67,29 @@ zig build -Doptimize=ReleaseSmall    # optimized (smallest binary)
 zig build test                       # run tests
 ```
 
-The output binary is at `zig-out/bin/Badi`.
+The output binary is at `zig-out/bin/badi`.
+
+## Installation
+
+Pre-built binaries are published with each release. Choose one:
+
+**AppImage** (portable, no install, bundles Qt6):
+```bash
+wget https://github.com/milkiLabs/Badi/releases/latest/download/Badi-x86_64.AppImage
+chmod +x Badi-x86_64.AppImage
+./Badi-x86_64.AppImage
+```
+
+**Tarball** (requires Qt6 + `gcc-libs` installed on the system):
+```bash
+wget https://github.com/milkiLabs/Badi/releases/latest/download/badi-linux-x86_64.tar.gz
+tar -xzf badi-linux-x86_64.tar.gz
+sudo install -m755 badi /usr/local/bin/badi
+```
+
+**Arch (AUR):** install `badi-bin` from the AUR.
+
+**From source:** see [Building](#building).
 
 ## Project Structure
 
