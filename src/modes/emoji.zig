@@ -53,31 +53,18 @@ fn writeStdoutAndExit(app: *state.AppState, glyph: []const u8, code: u8) void {
     _ = app.ui.main.Close();
 }
 
-/// Synthesizes the glyph as keystrokes via `wtype` (the Wayland
-/// equivalent of xdotool type).
-///
-/// `wtype` types into whatever window is *currently focused* at
-/// invocation time. Badi itself is focused while running, so we close
-/// Badi first and run wtype from a small `sh -c` helper that sleeps
-/// briefly — that gives the window manager a moment to restore focus
-/// to whatever app was focused before Badi opened (the terminal, the
-/// text editor, etc.), and the glyph lands there. The helper outlives
-/// Badi because it's a detached process.
+/// Synthesizes the glyph as keystrokes via `wtype`. Badi is itself
+/// focused while running, so we close it first; the WM restores
+/// focus to whatever app was focused before Badi opened (the
+/// terminal, the text editor, etc.), and wtype types the glyph there.
 ///
 /// If `wtype` is not installed, falls back to the clipboard.
 fn typeKeysAndExit(app: *state.AppState, glyph: []const u8) void {
-    // Close Badi before launching the typer, so the WM restores focus
-    // to the previous window. The sh -c sleep (below) gives the WM a
-    // moment to process the focus change.
     app.exit_code = 0;
     _ = app.ui.main.Close();
 
-    if (!qt6.QProcess.StartDetached22(app.allocator, "sh", &.{
-        "-c",
-        "sleep 0.1 && wtype -- \"$1\"",
-        "_",
-        glyph,
-    })) {
+    if (!qt6.QProcess.StartDetached22(app.allocator, "wtype", &.{ "--", glyph })) {
         copyToClipboard(app, glyph);
     }
+}
 }
