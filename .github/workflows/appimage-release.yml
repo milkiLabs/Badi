@@ -13,11 +13,8 @@ jobs:
       contents: write
 
     env:
+      VERSION: ${{ github.ref_name }}
       APPIMAGE_EXTRACT_AND_RUN: 1
-      QML_SOURCES_PATHS: ""
-      DISABLE_PLUGIN_QT_TRANSLATIONS: "1"
-      LINUXDEPLOY_OUTPUT_VERSION: "${{ github.ref_name }}"
-      NO_STRIP: "1"
 
     steps:
       - name: Checkout repository
@@ -36,70 +33,21 @@ jobs:
       - name: Build
         run: zig build -Doptimize=ReleaseFast -Dqt6-extra-path=$QT_ROOT_DIR -Dqt6-lib-path=$QT_ROOT_DIR/lib
 
-      - name: Install runtime dependencies
-        # `badi` is linked against libunwind (see build.zig:41), but the
-        # `install-qt-action` runtime deps don't include it. Without this,
-        # the dynamic linker fails to resolve libunwind.so.1 when linuxdeploy
-        # runs `ldd` and aborts with `Failed to run ldd: exited with code 6`.
+      - name: Install AppImage build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libunwind8
-
-      - name: Debug binary deps
-        # Echo the actual ldd output so a future failure mode is obvious
-        # from the CI log without needing to reproduce locally.
-        run: |
-          echo "=== file ==="
-          file zig-out/bin/badi || true
-          echo "=== readelf -d ==="
-          readelf -d zig-out/bin/badi | head -40 || true
-          echo "=== ldd ==="
-          ldd zig-out/bin/badi 2>&1 || echo "ldd exit: $?"
-
-      - name: Stage AppImage
-        run: |
-          mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/share/applications
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-          mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
-          install -Dm755 zig-out/bin/badi AppDir/usr/bin/badi
-          install -Dm644 assets/badi.desktop AppDir/usr/share/applications/badi.desktop
-          install -Dm644 assets/badi-256.png AppDir/usr/share/icons/hicolor/256x256/apps/badi.png
-          install -Dm644 assets/badi-512.png AppDir/usr/share/icons/hicolor/512x512/apps/badi.png
-          install -Dm644 assets/badi.desktop AppDir/badi.desktop
-
-      - name: Download linuxdeploy tools
-        run: |
-          mkdir -p tools
-          cd tools
-          curl -fsSL -o linuxdeploy.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          curl -fsSL -o linuxdeploy-plugin-qt.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-          curl -fsSL -o appimagetool.AppImage \
-            https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage
-          chmod +x *.AppImage
-          # Short-name symlinks so the binaries can be invoked by basename
-          # (the upstream artifacts always carry the .AppImage suffix).
-          ln -sf linuxdeploy.AppImage linuxdeploy
-          ln -sf linuxdeploy-plugin-qt.AppImage linuxdeploy-plugin-qt
-          ln -sf appimagetool.AppImage appimagetool
-          ls -la
+          sudo apt-get install -y \
+            python3-pip \
+            patchelf \
+            desktop-file-utils \
+            fakeroot \
+            zsync \
+            squashfs-tools
+          pip3 install --user appimage-builder
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Build AppImage
-        env:
-          QTDIR: ${{ env.QT_ROOT_DIR }}
-          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
-          LD_LIBRARY_PATH: ""
-          PATH: ${{ env.QT_ROOT_DIR }}/bin:${{ github.workspace }}/tools:${{ env.PATH }}
-        run: |
-          linuxdeploy \
-            --appdir AppDir \
-            --executable AppDir/usr/bin/badi \
-            --desktop-file AppDir/badi.desktop \
-            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/badi.png \
-            --plugin qt \
-            --output appimage
+        run: appimage-builder --recipe AppImageBuilder.yml --skip-test
 
       - name: Verify AppImage
         run: |
@@ -110,12 +58,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Badi-${{ github.ref_name }}-x86_64
-          path: Badi-${{ github.ref_name }}-x86_64.AppImage
+          path: |
+            Badi-${{ github.ref_name }}-x86_64.AppImage
+            Badi-${{ github.ref_name }}-x86_64.AppImage.zsync
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: Badi-${{ github.ref_name }}-x86_64.AppImage
+          files: |
+            Badi-${{ github.ref_name }}-x86_64.AppImage
+            Badi-${{ github.ref_name }}-x86_64.AppImage.zsync
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
