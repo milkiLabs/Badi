@@ -67,4 +67,3 @@ fn typeKeysAndExit(app: *state.AppState, glyph: []const u8) void {
         copyToClipboard(app, glyph);
     }
 }
-}
