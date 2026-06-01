@@ -4,6 +4,7 @@
 // the exit code, `destroy` releases resources.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const qt6 = @import("libqt6zig");
 const config = @import("../config/mod.zig");
 const state = @import("../state/mod.zig");
@@ -24,6 +25,7 @@ pub const App = struct {
     state: state.AppState,
     argv: [][:0]u8,
     qapp: qt6.QApplication,
+    single_instance_server: ?std.Io.net.Server,
 
     /// Builds the app. Loads theme + config, constructs widgets, wires
     /// signals, loads .desktop apps (in apps mode). Must be paired with
@@ -32,6 +34,23 @@ pub const App = struct {
     pub fn create(init: std.process.Init, settings: Settings) !App {
         const arena = init.arena.allocator();
         const gpa = init.gpa;
+
+        // Check single instance if in apps or emoji mode.
+        const mode = startup.resolveMode(init.io, settings);
+        var single_instance_server: ?std.Io.net.Server = null;
+        if (mode == .apps or mode == .emoji) {
+            if (builtin.os.tag == .linux) {
+                const uid = std.os.linux.getuid();
+                var path_buf: [128]u8 = undefined;
+                const path = try std.fmt.bufPrint(&path_buf, "\x00badi-single-instance-{}", .{uid});
+                const addr = try std.Io.net.UnixAddress.init(path);
+                single_instance_server = addr.listen(init.io, .{}) catch |err| switch (err) {
+                    error.AddressInUse => return error.AlreadyRunning,
+                    else => return err,
+                };
+            }
+        }
+        errdefer if (single_instance_server) |*server| server.deinit(init.io);
 
         // Qt init.
         const argv = try qt6.init(gpa, init.minimal.args);
@@ -72,6 +91,7 @@ pub const App = struct {
             .state = app_state,
             .argv = argv,
             .qapp = qapp,
+            .single_instance_server = single_instance_server,
         };
     }
 
@@ -93,6 +113,9 @@ pub const App = struct {
     /// deinit'd first (frees Zig-owned data), then the QApplication
     /// (which frees all Qt-owned widgets), then the qt6 init buffer.
     pub fn destroy(self: *App) void {
+        if (self.single_instance_server) |*server| {
+            server.deinit(self.io);
+        }
         self.state.deinit();
         self.qapp.Delete();
         qt6.deinit(self.gpa, self.argv);
