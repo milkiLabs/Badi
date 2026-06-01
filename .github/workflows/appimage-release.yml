@@ -44,6 +44,7 @@ jobs:
             zsync \
             squashfs-tools
           pip3 install --user appimage-builder
+          pip3 install --user --force-reinstall 'packaging<22'
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Build AppImage
