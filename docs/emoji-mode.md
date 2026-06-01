@@ -96,9 +96,10 @@ it by subtraction: `records_start = file_size - count * 24`.
 
 C ABI padding. The trailing `u16` in each pair is padded to 4 bytes by
 the struct alignment, even though the field itself is only 2 bytes. So
-`@sizeOf(Record) == 24` and `@alignOf(Record) == 4`. The `extern struct`
-declaration in `loader.zig` makes this explicit with named `pad` fields
-to avoid anyone reading the file later being surprised.
+each record is 4+2+2+4+2+2+4+2+2 = 24 bytes. The generator and loader
+both agree on this layout; the loader reads each field individually via
+`std.mem.readInt` (no struct cast, no `@alignCast` traps, no extra
+allocation).
 
 ### Why a slab and not JSON?
 
@@ -106,7 +107,8 @@ The full data set is ~200 KB of strings plus metadata. Parsing JSON at
 startup is a few milliseconds of pure overhead that runs every launch.
 The binary slab is `@embedFile`'d directly — no parse, no string
 duplication, no allocation for the strings themselves. Only the
-`EmojiEntry` slice (24 × count = 45 KB) is allocated at load time.
+`EmojiEntry` slice (3 × pointer-size × count = ~46 KB on 64-bit) is
+allocated at load time.
 
 ## Generation
 

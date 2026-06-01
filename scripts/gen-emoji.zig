@@ -11,14 +11,17 @@
 //
 // Layout:
 //   Header (16 B)            magic "BMOJ", version u32, count u32, reserved u32
-//   Records (count * 16 B)   glyph_off u32, glyph_len u16,
-//                            name_off u32, name_len u16,
-//                            kw_off u32, kw_len u16
 //   String blob (UTF-8)      glyphs, names, joined "name k1 k2 k3" keywords
+//   Records (count * 24 B)   glyph_off u32, glyph_len u16, u16 _pad
+//                            name_off u32,  name_len  u16, u16 _pad
+//                            kw_off   u32,  kw_len    u16, u16 _pad
 //
-// All integers little-endian. The runtime loader casts the embedded byte
-// slice to a `[*]const Record` via @alignCast; no parsing, no allocation
-// for the string data.
+// All integers little-endian. Each record is 24 B (C-ABI pads the u16s
+// after each u32 to 4-byte alignment). The runtime loader reads each
+// field via `std.mem.readInt` — no struct cast, no alignment trap.
+// The blob is written first; records are written last at file offset
+// 16 + blob_size, and the offsets in each record are absolute file
+// positions (so the blob-base offset is added at write time).
 
 const std = @import("std");
 const Io = std.Io;
