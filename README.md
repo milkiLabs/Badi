@@ -13,7 +13,9 @@ Badi in arabic means Starter or initiator. Starts programs and commands.
 | **Apps** | Default (no pipe) | Scans `.desktop` files, lets you search and launch apps |
 | **Piped** | `stdin` is a pipe | Streams lines from stdin, filter and select one (dmenu-style) |
 | **Prefix** | Type a trigger (e.g. `g `) | Runs a shell command template with your query |
+| **URL** | Type a URL (e.g. `example.com`) | Opens it in the default browser via `xdg-open` |
 | **Prompt** | `--prompt [LABEL]` | Shows a labeled input; the typed text is written to stdout on Enter |
+| **Emoji** | `--emoji` or type `": "` | Picks an emoji from a pre-packed Unicode list and copies/types/prints it |
 
 ## Prerequisites
 
@@ -73,24 +75,51 @@ The output binary is at `zig-out/bin/Badi`.
 build.zig            — Build configuration
 build.zig.zon        — Pinned dependencies (libqt6zig)
 src/
-  main.zig           — Entry point, bootstrap, Qt event loop
-  config.zig         — Theme and action JSON config loading
-  context.zig        — Global AppState, mode definitions
-  core_tests.zig     — Test runner for core modules
-  core/
-    desktop.zig      — .desktop file discovery and parsing
-    exec.zig         — Exec string parsing (quotes, field codes)
-    launcher.zig     — Launch/execute the selected item
-  ui/
-    callbacks.zig    — Qt signal callbacks (text change, key press, stdin)
-    window.zig       — QListView model callbacks, filter, select
+  main.zig           — Thin entry shim → app.App.create + run
+  core_tests.zig     — Test runner for non-Qt modules
+  app/               — App lifecycle (create / run / destroy), CLI parsing, startup sequencing
+    cli.zig          — --prompt flag parsing
+    startup.zig      — buildState, resolveMode, prepareInitialFrame
+    exit_code.zig    — post-event-loop exit code resolution
+  state/             — AppState, AppMode, Widgets bundle, C-ABI global pointer
+  config/            — JSON config loaders (theme, actions) + QSS generator
+  core/              — Pure logic, no Qt
+    filter.zig       — Generic fuzzy+substring filter
+    search.zig       — Scoring engine (substring, multi-token, acronym)
+    exec.zig         — Exec string parsing, shell quoting
+    desktop/         — XDG .desktop file discovery
+    emoji/           — Pre-packed binary emoji slab + loader
+  modes/             — Per-mode launch dispatch
+    apps.zig         — Launch a .desktop entry
+    piped.zig        — Print selected stdin line
+    prefix.zig       — Run a shell template
+    url.zig          — Open a URL with xdg-open
+    prompt.zig       — Write prompt answer to stdout
+    emoji.zig        — Copy/print/type the selected glyph
+  ui/                — Qt widget code
+    factory.zig      — Build widgets, wire signals, apply theme
+    view.zig         — Filter, selection, scroll
+    model.zig        — QAbstractListModel callbacks
+    status.zig       — "No results / waiting" label
+    piped_view.zig   — Async piped-list maintenance
+    callbacks/       — Signal handlers, split by signal type
+      text.zig       — onTextChanged (prefix/URL detection, re-filter)
+      key.zig        — onKeyPress (Enter, Esc, arrows, Ctrl-W)
+      click.zig      — onItemDoubleClicked
+      piped.zig      — onStdinActivated (stdin reader)
+      helpers.zig    — exitToApps, enterPrefixMode, enterUrlMode, enterEmojiMode
+  utils/url.zig      — isUrl() — URL detection for auto-mode-switch
 docs/
-  architecture.md    — Mode detection and startup design
+  codebase-structure.md — Module layering & rules (read this first)
+  architecture.md    — Mode detection and startup flow
+  app-lifecycle.md   — App.create → run → destroy sequence
+  modes.md           — Per-mode behavior reference
   performance.md     — Performance optimizations
   piped-mode.md      — Piped mode internals
+  prompt-mode.md     — Prompt mode internals
+  emoji-mode.md      — Emoji picker internals
   stdin-detection.md — TTY vs pipe vs /dev/null detection
-  codebase-structure.md — Core vs UI separation guide
-  user-docs/
+  user-docs/         — End-user configuration
     actions.md       — Prefix action configuration
     theme.md         — Theme configuration
     search-algo.md   — Search algorithm details
@@ -103,6 +132,7 @@ docs/
 badi                         # Launch app selector
 echo -e "foo\nbar\nbaz" | badi   # Piped mode (dmenu-style)
 name=$(badi --prompt "Name: ")    # Prompt mode — for shell scripts
+badi --emoji                # Emoji picker (copies selection to clipboard)
 ```
 
 ### Prompt Mode
@@ -125,6 +155,28 @@ token=$(badi --prompt "API token: " --password)
 
 See [docs/prompt-mode.md](docs/prompt-mode.md) for details.
 
+### Emoji Mode
+
+A built-in emoji picker. Search the Unicode emoji set by name or keyword,
+and the selection is routed to one of three actions (default: clipboard).
+
+```bash
+badi --emoji              # picker → copy to clipboard
+badi --emoji --print      # picker → write glyph to stdout
+badi --emoji --type       # picker → type into focused window
+```
+
+You can also enter emoji mode mid-session by typing `": "` while in apps mode.
+
+| Flag       | Effect                                                         |
+| ---------- | -------------------------------------------------------------- |
+| `--emoji`  | Enter emoji mode (initial). Mutually exclusive with `--prompt`. |
+| `--copy`   | Copy the selected glyph to the clipboard (default).            |
+| `--print`  | Write the glyph to stdout, exit 0.                             |
+| `--type`   | Synthesize keystrokes (wtype on Wayland, xdotool on X11).      |
+
+See [docs/emoji-mode.md](docs/emoji-mode.md) for details.
+
 ### Prefix Actions
 
 Type a trigger in the search box to switch modes:
@@ -142,10 +194,15 @@ Customize colors, fonts, and dimensions in `~/.config/badi/theme.json`. See [doc
 
 | Topic                           | Link                                                                 |
 | ------------------------------- | -------------------------------------------------------------------- |
-| Architecture and modes          | [docs/architecture.md](docs/architecture.md)                         |
+| Codebase structure              | [docs/codebase-structure.md](docs/codebase-structure.md)             |
+| Architecture and startup flow   | [docs/architecture.md](docs/architecture.md)                         |
+| App lifecycle (create/run/destroy) | [docs/app-lifecycle.md](docs/app-lifecycle.md)                     |
+| Per-mode behavior reference     | [docs/modes.md](docs/modes.md)                                       |
 | Prompt mode (script input)      | [docs/prompt-mode.md](docs/prompt-mode.md)                           |
 | Piped mode (dmenu-style)        | [docs/piped-mode.md](docs/piped-mode.md)                             |
-| Codebase structure              | [docs/codebase-structure.md](docs/codebase-structure.md)             |
+| Emoji mode internals            | [docs/emoji-mode.md](docs/emoji-mode.md)                             |
+| Stdin detection logic           | [docs/stdin-detection.md](docs/stdin-detection.md)                   |
+| Performance notes               | [docs/performance.md](docs/performance.md)                           |
 | How the API differs from Qt C++ | [libqt6zig FAQ Q3](https://github.com/rcalixte/libqt6zig#faq)        |
 | More example applications       | [libqt6zig-examples](https://github.com/rcalixte/libqt6zig-examples) |
 | Signals, slots, subclassing     | [libqt6zig Usage](https://github.com/rcalixte/libqt6zig#usage)       |
@@ -154,6 +211,8 @@ Customize colors, fonts, and dimensions in `~/.config/badi/theme.json`. See [doc
 
 ## Acknowledgments
 
-Thanks to [libqt6zig](https://github.com/rcalixte/libqt6zig) for the Qt 6 Zig bindings that make this project possible.
+- [libqt6zig](https://github.com/rcalixte/libqt6zig) — Qt 6 Zig bindings
+- [muan/unicode-emoji-json](https://github.com/muan/unicode-emoji-json) — Unicode emoji data
+- [muan/emojilib](https://github.com/muan/emojilib) — emoji keywords
 
 ## License

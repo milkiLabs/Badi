@@ -12,6 +12,7 @@ test {
     // Core (pure logic, no Qt)
     std.testing.refAllDecls(@import("core/mod.zig"));
     std.testing.refAllDecls(@import("core/desktop/mod.zig"));
+    std.testing.refAllDecls(@import("core/emoji/mod.zig"));
 
     // Config (pure logic, filesystem-dependent)
     std.testing.refAllDecls(@import("config/mod.zig"));

@@ -60,6 +60,18 @@ fn fillVisibleIndices(app: *state.AppState, query: []const u8) void {
             );
             appendAll(app, buf[0..n]);
         },
+        .emoji => {
+            const source = app.emojiEntries();
+            var buf: [core.search.max_results]usize = undefined;
+            const n = core.filter.filter(
+                core.emoji.EmojiEntry,
+                core.emoji.searchableOf,
+                source,
+                query,
+                &buf,
+            );
+            appendAll(app, buf[0..n]);
+        },
         .prefix, .url, .prompt => {}, // synthetic single row in model.zig, or no list
     }
 }
@@ -78,7 +90,7 @@ fn computeHasResults(app: *const state.AppState, query: []const u8) bool {
     return switch (app.mode) {
         .prefix, .url => query.len > 0,
         .prompt => false,
-        .apps, .piped => app.visible_indices.items.len > 0,
+        .apps, .piped, .emoji => app.visible_indices.items.len > 0,
     };
 }
 
@@ -136,6 +148,6 @@ fn resultCount(app: *const state.AppState) usize {
     return switch (app.mode) {
         .prefix, .url => if (app.current_query.items.len > 0) 1 else 0,
         .prompt => 0,
-        .apps, .piped => app.visible_indices.items.len,
+        .apps, .piped, .emoji => app.visible_indices.items.len,
     };
 }

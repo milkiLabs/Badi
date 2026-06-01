@@ -2,25 +2,40 @@
 
 ## Navigation
 
-| Shortcut | Action                          |
-| -------- | ------------------------------- |
-| Escape   | Exit prefix mode / close window |
-| Enter    | Launch selected item            |
-| Up       | Select previous item            |
-| Down     | Select next item                |
+| Shortcut | Action                                   |
+| -------- | ---------------------------------------- |
+| Enter    | Launch selected item (or submit prompt)  |
+| Up       | Select previous item                     |
+| Down     | Select next item (wraps around)          |
+
+## Escape
+
+Behavior depends on the current mode:
+
+| Mode              | Escape behavior                                  |
+| ----------------- | ------------------------------------------------ |
+| `apps`            | Close the window (exit code 0)                   |
+| `prefix`          | Exit back to apps mode (input cleared)           |
+| `url`             | Exit back to apps mode (input cleared)           |
+| `piped`           | Close the window (exit code 1)                   |
+| `prompt`          | Cancel — close the window (exit code 1)          |
 
 ## Editing
 
-| Shortcut | Action               |
-| -------- | -------------------- |
-| Ctrl+C   | Clear input          |
-| Ctrl+W   | Delete previous word |
+| Shortcut     | Action                                                          |
+| ------------ | --------------------------------------------------------------- |
+| Ctrl+C       | Clear the input                                                 |
+| Ctrl+W       | Delete previous word; in `prefix`/`url` on empty input, exit to apps |
+| Backspace    | Delete character before cursor; in `prefix`/`url` on empty input, exit to apps |
 
-In prefix mode, Backspace and Ctrl+W exit back to app search when the input is empty.
+In `prefix` and `url` modes, **Backspace** and **Ctrl+W** on an empty
+input both fall back to exiting the mode and returning to apps mode.
+This makes the prefix/URL layer feel like an inline form rather than a
+modal dialog.
 
 ## Built-in (Qt)
 
-These work out of the box via Qt's default handling:
+These work out of the box via Qt's default handling on `QLineEdit`:
 
 | Shortcut        | Action                             |
 | --------------- | ---------------------------------- |
@@ -32,5 +47,4 @@ These work out of the box via Qt's default handling:
 | Home / End      | Move cursor to start / end of line |
 | Ctrl+Left/Right | Move cursor by word                |
 | Shift+Arrow     | Select text                        |
-| Backspace       | Delete character before cursor     |
-| Ctrl+Backspace  | Delete previous word               |
+| Ctrl+Backspace  | Delete previous word (Qt default)  |

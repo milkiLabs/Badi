@@ -18,7 +18,7 @@ pub fn onModelRowCount(_: qt6.QAbstractListModel, parent: qt6.QModelIndex) callc
     return switch (app.mode) {
         .prefix, .url => if (app.current_query.items.len > 0) 1 else 0,
         .prompt => 0,
-        .apps, .piped => @intCast(app.visible_indices.items.len),
+        .apps, .piped, .emoji => @intCast(app.visible_indices.items.len),
     };
 }
 
@@ -40,10 +40,22 @@ pub fn onModelData(_: qt6.QAbstractListModel, index: qt6.QModelIndex, role: i32)
             const src = sourceIndexFromRow(app, row) orelse return qt6.QVariant.New();
             return qt6.QVariant.New24(app.piped_items.items[src]);
         },
+        .emoji => emojiRow(app, row),
         .prefix => |cfg| syntheticRow(app, row, "Run {s}: {s}", .{ cfg.name, app.current_query.items }),
         .url => syntheticRow(app, row, "Open in browser: {s}", .{app.current_query.items}),
         .prompt => qt6.QVariant.New(),
     };
+}
+
+fn emojiRow(app: *state.AppState, row: i32) qt6.QVariant {
+    const src = sourceIndexFromRow(app, row) orelse return qt6.QVariant.New();
+    const e = app.emojiEntries()[src];
+    // Format as "🚀  rocket" — glyph, two-space gutter, name. The font
+    // falls back to the system color-emoji font for the glyph span and
+    // to the configured text font for the name.
+    const text = std.fmt.allocPrint(app.allocator, "{s}  {s}", .{ e.glyph, e.name }) catch return qt6.QVariant.New();
+    defer app.allocator.free(text);
+    return qt6.QVariant.New24(text);
 }
 
 fn sourceIndexFromRow(app: *state.AppState, row: i32) ?usize {

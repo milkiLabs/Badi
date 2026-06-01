@@ -10,12 +10,14 @@ const view = @import("../view.zig");
 const placeholder_apps = "Search apps...";
 const placeholder_prefix = "Type to search or run...";
 const placeholder_url = "Type a URL...";
+const placeholder_emoji = "Search emojis...";
+const emoji_badge = "😀 Emoji";
 const browser_icon = "🌐";
 const browser_name = "Browser";
 
 /// Resets the app to apps mode: hide the badge, restore the apps
-/// placeholder, re-filter with an empty query. Used when leaving prefix
-/// or URL mode (backspace to empty input, Escape, Ctrl-W on empty input).
+/// placeholder, re-filter with an empty query. Used when leaving prefix,
+/// URL, or emoji mode (backspace to empty input, Escape, Ctrl-W).
 pub fn exitToApps(app: *state.AppState) void {
     app.mode = .apps;
     app.ui.badge.Hide();
@@ -43,4 +45,20 @@ pub fn enterUrlMode(app: *state.AppState) void {
     app.ui.badge.SetText(browser_icon ++ " " ++ browser_name);
     app.ui.badge.Show();
     app.ui.input.SetPlaceholderText(placeholder_url);
+}
+
+/// Enters emoji mode. Triggered by typing ": " in apps mode. Shows the
+/// "😀 Emoji" badge and switches the placeholder. The actual emoji data
+/// must already be loaded into `app.emojis` (buildState does this
+/// eagerly for any non-prompt mode).
+pub fn enterEmojiMode(app: *state.AppState) void {
+    if (app.emojis == null) {
+        // Should never happen — buildState pre-loads. Bail safely.
+        return;
+    }
+    app.mode = .{ .emoji = .{ .action = .copy } };
+    app.ui.badge.SetText(emoji_badge);
+    app.ui.badge.Show();
+    app.ui.input.SetPlaceholderText(placeholder_emoji);
+    view.applyFilter(app, "");
 }

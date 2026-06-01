@@ -18,12 +18,6 @@ On first run, a default config file is created automatically.
       "action": "xdg-open https://google.com/search?q=%s"
     },
     {
-      "trigger": "f ",
-      "name": "Files",
-      "icon": "📁",
-      "action": "xdg-open %s"
-    },
-    {
       "trigger": "> ",
       "name": "Run",
       "icon": ">",
@@ -32,6 +26,9 @@ On first run, a default config file is created automatically.
   ]
 }
 ```
+
+These are the defaults that get written on first run (when the file is
+missing). Edit the file to add, remove, or change triggers.
 
 ## Fields
 

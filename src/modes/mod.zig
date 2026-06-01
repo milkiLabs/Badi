@@ -19,5 +19,6 @@ pub fn dispatch(app: *state.AppState) void {
         .prefix => @import("prefix.zig").launch(app),
         .url => @import("url.zig").launch(app),
         .prompt => @import("prompt.zig").launch(app),
+        .emoji => @import("emoji.zig").launch(app),
     }
 }

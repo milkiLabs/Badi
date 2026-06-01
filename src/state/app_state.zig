@@ -11,11 +11,14 @@
 const std = @import("std");
 const config = @import("../config/mod.zig");
 const desktop = @import("../core/desktop/mod.zig");
+const emoji = @import("../core/emoji/mod.zig");
 const Widgets = @import("widgets.zig").Widgets;
 const mode_mod = @import("mode.zig");
 
 pub const AppMode = mode_mod.AppMode;
 pub const PromptConfig = mode_mod.PromptConfig;
+pub const EmojiConfig = mode_mod.EmojiConfig;
+pub const EmojiAction = mode_mod.EmojiAction;
 
 pub const AppState = struct {
     // Core
@@ -29,6 +32,7 @@ pub const AppState = struct {
 
     // Source data
     app_list: ?desktop.DesktopAppList,
+    emojis: ?emoji.EmojiData,
     prefixes: std.ArrayList(config.Action),
 
     // Piped state
@@ -47,6 +51,12 @@ pub const AppState = struct {
         return &.{};
     }
 
+    /// Returns the loaded emoji set, or an empty slice if not loaded.
+    pub fn emojiEntries(self: *const AppState) []const emoji.EmojiEntry {
+        if (self.emojis) |data| return data.entries;
+        return &.{};
+    }
+
     pub const Selection = struct {
         data: []const u8,
     };
@@ -62,12 +72,14 @@ pub const AppState = struct {
         return switch (self.mode) {
             .apps => .{ .data = self.apps()[source_index].exec },
             .piped => .{ .data = self.piped_items.items[source_index] },
+            .emoji => .{ .data = self.emojiEntries()[source_index].glyph },
             .prefix, .url, .prompt => null,
         };
     }
 
     pub fn deinit(self: *AppState) void {
         if (self.app_list) |*list| list.deinit();
+        if (self.emojis) |*data| data.deinit(self.allocator);
         for (self.piped_items.items) |item| self.allocator.free(item);
         self.piped_items.deinit(self.allocator);
         self.stdin_pending.deinit(self.allocator);

@@ -28,6 +28,7 @@ pub fn buildState(
         .mode = .apps, // refined in resolveMode at run time
         .exit_code = null,
         .app_list = null,
+        .emojis = null,
         .piped_items = .empty,
         .stdin_pending = .empty,
         .prefixes = .empty,
@@ -61,18 +62,26 @@ pub fn buildState(
         app_state.app_list = try core.desktop.loadDesktopApps(gpa, io, env);
     }
 
+    // Load emojis in any non-prompt mode so the ": " trigger is instant.
+    // The slab is binary and pre-resolved at compile time; load is just an
+    // allocation of the entry slice.
+    if (settings.prompt == null) {
+        app_state.emojis = try core.emoji.loadEmojis(gpa);
+    }
+
     return app_state;
 }
 
-/// Resolves the actual initial mode. If --prompt was given, prompt mode
-/// wins unconditionally. Otherwise, stdin's stat() determines piped vs
-/// apps. A real named pipe is the only signal for piped mode; character
-/// devices (terminal, /dev/null) fall through to apps.
+/// Resolves the actual initial mode. If --prompt or --emoji was given,
+/// those modes win unconditionally. Otherwise, stdin's stat() determines
+/// piped vs apps. A real named pipe is the only signal for piped mode;
+/// character devices (terminal, /dev/null) fall through to apps.
 pub fn resolveMode(
     io: std.Io,
     settings: App.Settings,
 ) state.AppMode {
     if (settings.prompt) |cfg| return .{ .prompt = cfg };
+    if (settings.emoji) |cfg| return .{ .emoji = cfg };
 
     const stdin = std.Io.File.stdin();
     const stat = stdin.stat(io) catch return .apps;
@@ -97,12 +106,12 @@ pub fn prepareInitialFrame(app: *state.AppState, arena: std.mem.Allocator, setti
     }
 
     // Title + (prompt-mode) prefilled text + focus.
-    ui.factory.configureInitialFrame(app.ui, arena, settings.prompt);
+    ui.factory.configureInitialFrame(app.ui, arena, settings);
 
-    // First paint: apps mode shows all apps, piped shows the "waiting"
+    // First paint: apps/emoji show all items, piped shows the "waiting"
     // status, prompt has nothing to show.
     switch (app.mode) {
-        .apps => ui.view.applyFilter(app, ""),
+        .apps, .emoji => ui.view.applyFilter(app, ""),
         .piped => ui.status.updateNoResults(app),
         .prefix, .url, .prompt => {},
     }

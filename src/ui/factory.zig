@@ -120,7 +120,8 @@ pub fn wireSignals(widgets: Widgets, cbs: SignalCallbacks) void {
 
 /// Sets the window title and (in prompt mode) pre-fills the input. Call
 /// after building, before showing.
-pub fn configureInitialFrame(widgets: Widgets, arena: std.mem.Allocator, prompt: ?state.PromptConfig) void {
+pub fn configureInitialFrame(widgets: Widgets, arena: std.mem.Allocator, settings: anytype) void {
+    const prompt: ?state.PromptConfig = settings.prompt;
     if (prompt) |cfg| {
         const title = if (cfg.label.len > 0)
             std.fmt.allocPrint(arena, "Badi — {s}", .{cfg.label}) catch "Badi"
@@ -131,6 +132,8 @@ pub fn configureInitialFrame(widgets: Widgets, arena: std.mem.Allocator, prompt:
             widgets.input.SetText(cfg.default_value);
             widgets.input.SelectAll();
         }
+    } else if (settings.emoji != null) {
+        widgets.main.SetWindowTitle("Badi — Emoji");
     } else {
         widgets.main.SetWindowTitle("Badi");
     }

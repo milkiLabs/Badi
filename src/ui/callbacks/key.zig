@@ -18,10 +18,10 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
     const ctrl = (event.Modifiers() & km.ControlModifier) != 0;
 
     if (key == qk.Key_Escape) {
-        if (app.mode == .prefix or app.mode == .url) {
+        if (canExitToApps(app.mode)) {
             helpers.exitToApps(app);
-        } else if (app.mode == .prompt) {
-            // Escape cancels the prompt — exit code 1 signals "no answer".
+        } else if (isCancelable(app.mode)) {
+            // Escape cancels the prompt/emoji/pipe — exit code 1 signals "no answer".
             app.exit_code = 1;
             _ = app.ui.main.Close();
         } else {
@@ -42,7 +42,7 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
         event.Accept();
     } else if (ctrl and key == qk.Key_W) {
         if (inputIsEmpty(self, app)) {
-            if (app.mode == .prefix or app.mode == .url) helpers.exitToApps(app);
+            if (canExitToApps(app.mode)) helpers.exitToApps(app);
             event.Accept();
             return;
         }
@@ -51,7 +51,7 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
         event.Accept();
     } else if (key == qk.Key_Backspace) {
         if (inputIsEmpty(self, app)) {
-            if (app.mode == .prefix or app.mode == .url) helpers.exitToApps(app);
+            if (canExitToApps(app.mode)) helpers.exitToApps(app);
             event.Accept();
             return;
         }
@@ -59,6 +59,29 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
     } else {
         self.SuperKeyPressEvent(event);
     }
+}
+
+/// True if the current mode is one of the "back to apps" mid-session modes
+/// (prefix/url/emoji entered via the ": " trigger). Used by Escape,
+/// Backspace, and Ctrl-W to decide whether to drop back to apps or close
+/// the window. Emoji mode entered via --emoji does not count — Esc
+/// closes the app (see `isCancelable`).
+fn canExitToApps(mode: state.AppMode) bool {
+    return switch (mode) {
+        .prefix, .url => true,
+        .emoji => |cfg| cfg.entry == .trigger,
+        else => false,
+    };
+}
+
+/// True if the current mode is canceled by Esc/Backspace/Ctrl-W with
+/// exit code 1. Currently prompt, piped, and emoji-launched-via-CLI.
+fn isCancelable(mode: state.AppMode) bool {
+    return switch (mode) {
+        .prompt, .piped => true,
+        .emoji => |cfg| cfg.entry == .cli,
+        else => false,
+    };
 }
 
 /// Returns true and frees the temporary buffer if the input field is empty.

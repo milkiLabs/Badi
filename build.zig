@@ -66,6 +66,22 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
+    // `zig build gen-emoji` — regenerates src/core/emoji/data/emoji.bin
+    // from the vendored JSON files in vendor/. Not part of the default
+    // build; the generated binary is committed.
+    const gen_emoji_step = b.step("gen-emoji", "Regenerate the embedded emoji slab from vendored JSON");
+    {
+        const gen_emoji = b.addRunArtifact(b.addExecutable(.{
+            .name = "gen-emoji",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("scripts/gen-emoji.zig"),
+                .target = target,
+                .optimize = .ReleaseFast,
+            }),
+        }));
+        gen_emoji_step.dependOn(&gen_emoji.step);
+    }
+
     const run_step = b.step("run", "Run the app");
 
     const run_cmd = b.addRunArtifact(exe);

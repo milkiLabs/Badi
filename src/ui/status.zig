@@ -23,6 +23,7 @@ pub fn updateNoResults(app: *state.AppState) void {
     const text: []const u8 = switch (app.mode) {
         .apps => "No apps found",
         .piped => pipedEmptyText(app),
+        .emoji => "No emoji found",
         .prefix, .url, .prompt => unreachable, // filtered above by hasListSource
     };
     app.ui.no_results.SetText(text);

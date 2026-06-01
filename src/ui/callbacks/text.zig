@@ -1,6 +1,7 @@
 // Text-changed callback. Detects mode transitions: prefix triggers, URL
-// auto-detection, and the reverse (backspacing out of a URL reverts to
-// apps). All other keystrokes just re-filter the current view.
+// auto-detection, the ": " emoji trigger, and the reverse (backspacing
+// out of a URL or emoji reverts to apps). All other keystrokes just
+// re-filter the current view.
 
 const std = @import("std");
 const qt6 = @import("libqt6zig");
@@ -9,6 +10,8 @@ const config = @import("../../config/mod.zig");
 const url = @import("../../utils/url.zig");
 const view = @import("../view.zig");
 const helpers = @import("helpers.zig");
+
+const emoji_trigger = ": ";
 
 pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
     const app = state.global.get();
@@ -28,8 +31,14 @@ pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
         return;
     }
 
-    // Apps mode: check for a configured prefix trigger or auto-detect URL.
+    // Apps mode: check for the hardcoded ": " emoji trigger first (cheap,
+    // no allocation), then the configured prefix triggers, then URL
+    // auto-detect.
     if (app.mode == .apps) {
+        if (std.mem.eql(u8, query, emoji_trigger)) {
+            helpers.enterEmojiMode(app);
+            return;
+        }
         for (app.prefixes.items) |cfg| {
             if (matchesTrigger(query, cfg)) {
                 helpers.enterPrefixMode(app, cfg);
@@ -43,7 +52,7 @@ pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
         }
     }
 
-    // Otherwise: re-filter in the current mode (apps/piped/prefix).
+    // Otherwise: re-filter in the current mode (apps/piped/emoji/prefix).
     view.applyFilter(app, query);
 }
 
