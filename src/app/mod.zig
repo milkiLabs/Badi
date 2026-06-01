@@ -62,8 +62,6 @@ pub const App = struct {
             .on_model_row_count = ui.model.onModelRowCount,
             .on_model_data = ui.model.onModelData,
             .on_item_double_clicked = ui.callbacks.onItemDoubleClicked,
-            .on_input_focus_out = ui.callbacks.onInputFocusOut,
-            .on_focus_guard_timeout = ui.callbacks.onFocusGuardTimeout,
             .on_stdin_activated = ui.callbacks.onStdinActivated,
         });
 
@@ -107,9 +105,6 @@ pub const App = struct {
         startup.prepareInitialFrame(&self.state, self.arena, self.settings);
         ui.wayland.setup(self.state.ui.main);
         self.state.ui.main.Show();
-        self.state.ui.main.Raise();
-        self.state.ui.main.ActivateWindow();
-        self.state.ui.focus_guard.Start2();
         _ = qt6.QApplication.Exec();
         return exit_code.resolve(&self.state);
     }

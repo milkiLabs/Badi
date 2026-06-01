@@ -20,8 +20,6 @@ pub const SignalCallbacks = struct {
     on_model_row_count: *const fn (qt6.QAbstractListModel, qt6.QModelIndex) callconv(.c) i32,
     on_model_data: *const fn (qt6.QAbstractListModel, qt6.QModelIndex, i32) callconv(.c) qt6.QVariant,
     on_item_double_clicked: *const fn (qt6.QListView, qt6.QModelIndex) callconv(.c) void,
-    on_input_focus_out: *const fn (qt6.QLineEdit, qt6.QFocusEvent) callconv(.c) void,
-    on_focus_guard_timeout: *const fn (qt6.QTimer) callconv(.c) void,
     on_stdin_activated: ?*const fn (qt6.QSocketNotifier, qt6.QSocketDescriptor, i32) callconv(.c) void = null,
 };
 
@@ -84,8 +82,6 @@ pub fn build(arena: std.mem.Allocator, theme: config.Theme, prompt: ?state.Promp
     list.SetModel(model);
 
     const no_results = qt6.QLabel.New5("No apps found", main);
-    const focus_guard = qt6.QTimer.New2(main);
-    focus_guard.SetInterval(75);
 
     // Layout: input row on top, list in the middle, status label below.
     // Hidden children take zero space, so prompt mode collapses naturally.
@@ -118,7 +114,6 @@ pub fn build(arena: std.mem.Allocator, theme: config.Theme, prompt: ?state.Promp
         .list = list,
         .model = model,
         .no_results = no_results,
-        .focus_guard = focus_guard,
     };
 }
 
@@ -129,8 +124,6 @@ pub fn wireSignals(widgets: Widgets, cbs: SignalCallbacks) void {
     widgets.list.OnDoubleClicked(cbs.on_item_double_clicked);
     widgets.input.OnTextChanged(cbs.on_text_changed);
     widgets.input.OnKeyPressEvent(cbs.on_key_press);
-    widgets.input.OnFocusOutEvent(cbs.on_input_focus_out);
-    widgets.focus_guard.OnTimeout(cbs.on_focus_guard_timeout);
 }
 
 /// Sets the window title and (in prompt mode) pre-fills the input. Call
