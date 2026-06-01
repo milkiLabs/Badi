@@ -36,54 +36,48 @@ pub fn applyFilter(app: *state.AppState, query: []const u8) void {
 
 fn fillVisibleIndices(app: *state.AppState, query: []const u8) void {
     switch (app.mode) {
-        .apps => {
-            const source = app.apps();
-            var buf: [core.search.max_results]usize = undefined;
-            const n = core.filter.filter(
-                core.desktop.DesktopEntry,
-                core.desktop.nameOf,
-                source,
-                query,
-                &buf,
-            );
-            appendAll(app, buf[0..n]);
-        },
-        .piped => {
-            const source = app.piped_items.items;
-            var buf: [core.search.max_results]usize = undefined;
-            const n = core.filter.filter(
-                []const u8,
-                identityStr,
-                source,
-                query,
-                &buf,
-            );
-            appendAll(app, buf[0..n]);
-        },
-        .emoji => {
-            const source = app.emojiEntries();
-            var buf: [core.search.max_results]usize = undefined;
-            const n = core.filter.filter(
-                core.emoji.EmojiEntry,
-                core.emoji.searchableOf,
-                source,
-                query,
-                &buf,
-            );
-            appendAll(app, buf[0..n]);
-        },
+        .apps => fillFor(core.desktop.DesktopEntry, core.desktop.nameOf, app.apps(), app, query),
+        .piped => fillFor([]const u8, identityStr, app.piped_items.items, app, query),
+        .emoji => fillFor(core.emoji.EmojiEntry, core.emoji.searchableOf, app.emojiEntries(), app, query),
         .prefix, .url, .prompt => {}, // synthetic single row in model.zig, or no list
     }
 }
 
-fn identityStr(s: []const u8) []const u8 {
-    return s;
+/// Generic helper: writes filtered indices directly into `visible_indices`.
+/// Empty query → zero heap allocs (enumerate in place).
+/// Non-empty query → one heap alloc (ScoredItem scratch buffer).
+fn fillFor(
+    comptime T: type,
+    comptime getText: fn (T) []const u8,
+    source: []const T,
+    app: *state.AppState,
+    query: []const u8,
+) void {
+    if (source.len == 0) return;
+
+    // Grow visible_indices once to fit the worst case (all items match).
+    app.visible_indices.ensureTotalCapacity(app.allocator, source.len) catch return;
+
+    if (query.len == 0) {
+        // Source order, no scoring, zero heap allocations.
+        for (0..source.len) |i| {
+            app.visible_indices.appendAssumeCapacity(i);
+        }
+        return;
+    }
+
+    // One heap allocation: the scratch buffer for scoring + sorting.
+    const scratch = app.allocator.alloc(core.search.ScoredItem, source.len) catch return;
+    defer app.allocator.free(scratch);
+
+    // Write directly into visible_indices' backing memory.
+    const out = app.visible_indices.allocatedSlice();
+    const n = core.filter.filter(T, getText, source, query, out, scratch);
+    app.visible_indices.items.len = n;
 }
 
-fn appendAll(app: *state.AppState, indices: []const usize) void {
-    for (indices) |idx| {
-        app.visible_indices.append(app.allocator, idx) catch break;
-    }
+fn identityStr(s: []const u8) []const u8 {
+    return s;
 }
 
 fn computeHasResults(app: *const state.AppState, query: []const u8) bool {

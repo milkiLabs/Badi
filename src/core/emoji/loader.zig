@@ -127,13 +127,17 @@ test "searching keywords via core.filter finds a match" {
     defer emojis.deinit(allocator);
 
     const query = "rocket";
-    var buf: [@import("../search.zig").max_results]usize = undefined;
+    const buf = try allocator.alloc(usize, emojis.entries.len);
+    defer allocator.free(buf);
+    const scratch = try allocator.alloc(@import("../search.zig").ScoredItem, emojis.entries.len);
+    defer allocator.free(scratch);
     const n = @import("../filter.zig").filter(
         @import("entry.zig").EmojiEntry,
         @import("entry.zig").searchableOf,
         emojis.entries,
         query,
-        &buf,
+        buf,
+        scratch,
     );
     try std.testing.expect(n > 0);
     // The top result should be the rocket emoji itself.
@@ -147,13 +151,17 @@ test "search keywords match synonyms" {
 
     // "happy" should match grinning face via emojilib keyword.
     const query = "happy";
-    var buf: [@import("../search.zig").max_results]usize = undefined;
+    const buf = try allocator.alloc(usize, emojis.entries.len);
+    defer allocator.free(buf);
+    const scratch = try allocator.alloc(@import("../search.zig").ScoredItem, emojis.entries.len);
+    defer allocator.free(scratch);
     const n = @import("../filter.zig").filter(
         @import("entry.zig").EmojiEntry,
         @import("entry.zig").searchableOf,
         emojis.entries,
         query,
-        &buf,
+        buf,
+        scratch,
     );
     try std.testing.expect(n > 0);
     // The smiling face should appear in the top results.
