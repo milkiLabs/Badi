@@ -29,18 +29,21 @@ pub fn appendPipedItem(app: *state.AppState, line: []const u8) !void {
         if (s < 0) return; // doesn't match
 
         // Find insertion point to keep visible_indices sorted by score desc.
-        // We have to re-score each existing item because visible_indices only
-        // stores indices, not scores. O(N) per append; fine for our scale.
+        // `piped_visible_scores` is rebuilt with `visible_indices` on full
+        // refilter, so streaming only scores the new line once.
+        std.debug.assert(app.piped_visible_scores.items.len == app.visible_indices.items.len);
+        try app.visible_indices.ensureUnusedCapacity(app.allocator, 1);
+        try app.piped_visible_scores.ensureUnusedCapacity(app.allocator, 1);
+
         var insert_pos = app.visible_indices.items.len;
-        for (app.visible_indices.items, 0..) |vis_idx, pos| {
-            const existing_text = app.piped_items.items[vis_idx];
-            const existing_score = core.search.score(query, existing_text);
+        for (app.piped_visible_scores.items, 0..) |existing_score, pos| {
             if (s > existing_score) {
                 insert_pos = pos;
                 break;
             }
         }
-        try app.visible_indices.insert(app.allocator, insert_pos, source_index);
+        app.visible_indices.insertAssumeCapacity(insert_pos, source_index);
+        app.piped_visible_scores.insertAssumeCapacity(insert_pos, s);
     }
     if (app.selected_index == null) app.selected_index = 0;
 }

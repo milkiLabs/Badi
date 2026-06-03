@@ -23,20 +23,6 @@ plain bool, since the load happens before the event loop).
 **Touches**: `core/emoji/loader.zig`, `app/startup.zig`,
 `ui/callbacks/helpers.zig` (`enterEmojiMode`).
 
-### 4. Fix piped-mode O(N²) sort on stream
-
-**Why**: `ui/piped_view.zig::appendPipedItem` re-scores every existing
-visible item on every new line to find the insertion point. For a
-100,000-line pipe that scrolls past 50,000 visible rows, that's 5 × 10⁹
-score calls on the last line. Most users won't hit this, but a `ps aux |
-badi` (50-200 lines) shows the cost in profiling.
-**T-shirt**: S. Two clean options:
-
-- Keep a parallel `[]i64` of scores next to `visible_indices`; sort
-  becomes O(N) on append.
-- Skip the sort entirely: append at end and let the user re-filter.
-  **Touches**: `ui/piped_view.zig`, possibly a new `core/piped_sort.zig`.
-
 ### 5. `launched-but-failed` exit code
 
 **Why**: `apps.zig`, `prefix.zig`, `url.zig` all ignore the bool return

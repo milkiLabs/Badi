@@ -39,6 +39,7 @@ pub fn buildState(
         .prefixes = .empty,
         .current_query = .empty,
         .visible_indices = .empty,
+        .piped_visible_scores = .empty,
         .selected_index = null,
         .stdin_eof = false,
         .setting_text = false,

@@ -6,7 +6,7 @@
 //   - Mode: which mode is active, the final exit code
 //   - Source: the data being filtered (apps / piped lines / emoji)
 //   - Piped state: incremental stdin buffering
-//   - Filter state: the current query, visible rows, selection
+//   - Filter state: the current query, visible rows, piped scores, selection
 
 const std = @import("std");
 const config = @import("../config/mod.zig");
@@ -45,6 +45,7 @@ pub const AppState = struct {
     // Filter state
     current_query: std.ArrayList(u8),
     visible_indices: std.ArrayList(usize),
+    piped_visible_scores: std.ArrayList(i64),
     selected_index: ?usize,
 
     /// Re-entrancy guard for `setInputText`. A `SetText` call that we issue
@@ -139,5 +140,6 @@ pub const AppState = struct {
         self.prefixes.deinit(self.allocator);
         self.current_query.deinit(self.allocator);
         self.visible_indices.deinit(self.allocator);
+        self.piped_visible_scores.deinit(self.allocator);
     }
 };

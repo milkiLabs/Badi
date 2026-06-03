@@ -18,6 +18,7 @@ pub fn applyFilter(app: *state.AppState, query: []const u8) void {
     app.current_query.clearRetainingCapacity();
     app.current_query.appendSlice(app.allocator, query) catch {};
     app.visible_indices.clearRetainingCapacity();
+    app.piped_visible_scores.clearRetainingCapacity();
     app.selected_index = null;
 
     fillVisibleIndices(app, query);
@@ -35,9 +36,34 @@ pub fn applyFilter(app: *state.AppState, query: []const u8) void {
 fn fillVisibleIndices(app: *state.AppState, query: []const u8) void {
     switch (app.mode) {
         .apps => fillFor(core.desktop.DesktopEntry, core.desktop.nameOf, app.apps(), app, query),
-        .piped => fillFor([]const u8, identityStr, app.piped_items.items, app, query),
+        .piped => fillPiped(app, query),
         .emoji => fillFor(core.emoji.EmojiEntry, core.emoji.searchableOf, app.emojiEntries(), app, query),
         .prefix, .url, .prompt => {}, // synthetic single row in model.zig, or no list
+    }
+}
+
+fn fillPiped(app: *state.AppState, query: []const u8) void {
+    const source = app.piped_items.items;
+    if (source.len == 0) return;
+
+    app.visible_indices.ensureTotalCapacity(app.allocator, source.len) catch return;
+
+    if (query.len == 0) {
+        for (0..source.len) |i| {
+            app.visible_indices.appendAssumeCapacity(i);
+        }
+        return;
+    }
+
+    app.piped_visible_scores.ensureTotalCapacity(app.allocator, source.len) catch return;
+
+    const scratch = app.allocator.alloc(core.search.ScoredItem, source.len) catch return;
+    defer app.allocator.free(scratch);
+
+    const n = core.search.searchMapped([]const u8, identityStr, source, query, scratch);
+    for (scratch[0..n]) |item| {
+        app.visible_indices.appendAssumeCapacity(item.index);
+        app.piped_visible_scores.appendAssumeCapacity(item.score);
     }
 }
 
