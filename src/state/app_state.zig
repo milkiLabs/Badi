@@ -13,6 +13,7 @@ const config = @import("../config/mod.zig");
 const core = @import("../core/mod.zig");
 const desktop = @import("../core/desktop/mod.zig");
 const emoji = @import("../core/emoji/mod.zig");
+const plugin = @import("../plugins/api.zig");
 const Widgets = @import("widgets.zig").Widgets;
 const mode_mod = @import("mode.zig");
 
@@ -31,6 +32,7 @@ pub const AppState = struct {
 
     // Mode
     mode: AppMode,
+    registry: plugin.Registry,
     exit_code: ?u8,
 
     // Source data
@@ -40,6 +42,11 @@ pub const AppState = struct {
     emojis: ?emoji.EmojiData,
     emojis_loaded: bool,
     prefixes: std.ArrayList(config.Action),
+    registered_modes: std.ArrayList(*const plugin.Mode),
+    registered_triggers: std.ArrayList(plugin.Trigger),
+    prompt_context: PromptConfig,
+    emoji_cli_context: EmojiConfig,
+    emoji_trigger_context: EmojiConfig,
 
     // Piped state
     piped_items: std.ArrayList([]const u8),
@@ -89,11 +96,40 @@ pub const AppState = struct {
     /// row-count callback — three callers that used to switch on `app.mode`
     /// independently.
     pub fn resultCount(self: *const AppState) usize {
-        return switch (self.mode) {
-            .prefix, .url => if (self.current_query.items.len > 0) 1 else 0,
-            .prompt => 0,
-            .apps, .piped, .emoji => self.visible_indices.items.len,
-        };
+        return self.mode.plugin.resultCount(self, self.mode.ctx);
+    }
+
+    pub fn hasListSource(self: *const AppState) bool {
+        return self.mode.plugin.has_list_source;
+    }
+
+    pub fn hasBadge(self: *AppState) bool {
+        if (self.mode.plugin.badgeText) |badgeText| return badgeText(self, self.mode.ctx) != null;
+        return false;
+    }
+
+    pub fn badgeText(self: *AppState) ?[]const u8 {
+        const callback = self.mode.plugin.badgeText orelse return null;
+        return callback(self, self.mode.ctx);
+    }
+
+    pub fn emptyText(self: *const AppState) []const u8 {
+        const callback = self.mode.plugin.emptyText orelse return "No results";
+        return callback(self, self.mode.ctx);
+    }
+
+    pub fn canExitToDefault(self: *const AppState) bool {
+        const callback = self.mode.plugin.canExitToDefault orelse return false;
+        return callback(self, self.mode.ctx);
+    }
+
+    pub fn isCancelable(self: *const AppState) bool {
+        const callback = self.mode.plugin.isCancelable orelse return false;
+        return callback(self, self.mode.ctx);
+    }
+
+    pub fn singleInstanceEnabled(self: *const AppState) bool {
+        return self.mode.plugin.singleInstance;
     }
 
     /// Sets the input field text without triggering a `textChanged` re-entry.
@@ -119,11 +155,11 @@ pub const AppState = struct {
         const selected = self.selected_index orelse return null;
         if (selected >= self.visible_indices.items.len) return null;
         const source_index = self.visible_indices.items[selected];
-        return switch (self.mode) {
+        return switch (self.mode.plugin.selection_source) {
             .apps => .{ .data = self.apps()[source_index].exec, .app_id = desktop.idOf(self.apps()[source_index]) },
             .piped => .{ .data = self.piped_items.items[source_index] },
             .emoji => .{ .data = self.emojiEntries()[source_index].glyph },
-            .prefix, .url, .prompt => null,
+            .none => null,
         };
     }
 
@@ -144,6 +180,8 @@ pub const AppState = struct {
             self.allocator.free(p.action);
         }
         self.prefixes.deinit(self.allocator);
+        self.registered_modes.deinit(self.allocator);
+        self.registered_triggers.deinit(self.allocator);
         self.current_query.deinit(self.allocator);
         self.visible_indices.deinit(self.allocator);
         self.piped_visible_scores.deinit(self.allocator);
