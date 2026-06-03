@@ -26,6 +26,8 @@ Queries are matched in order of priority:
 
 - Maximum **50 results** returned per search (`core.search.max_results`)
 - Empty queries bypass scoring entirely and show all items in source order
+  (in `apps` mode, the source order is replaced with a history-based
+  ranking — see [launch-history](../launch-history.md))
 - Ties break by source index (lower index first)
 
 ## Filter Step
@@ -43,7 +45,21 @@ needs: a sorted, top-N list of source indices.
 
 | File                       | Purpose                                              |
 | -------------------------- | ---------------------------------------------------- |
-| `src/core/search.zig`      | Scoring engine (score, search, searchMapped), tests  |
+| `src/core/search.zig`      | Scoring engine (`score`, `search`, `searchMapped`, `searchMappedBoosted`, `sortScored`), tests |
 | `src/core/filter.zig`      | Generic filter step: source + query → top-N indices  |
-| `src/ui/view.zig`          | Integration: `applyFilter` (apps + piped modes)      |
+| `src/core/launch_history.zig` | Per-app launch counts + `log2(count)` boost signal |
+| `src/ui/view.zig`          | Integration: `applyFilter`, `fillApps` (history + boost wiring) |
 | `src/ui/piped_view.zig`    | `appendPipedItem` (incremental piped append)         |
+
+## Personal ranking (apps mode only)
+
+On top of the base scoring, the apps list adds a small additive boost
+based on how often you've launched each app. The boost is
+`log2(launch_count)`, so a frequently-launched app is nudged by a
+handful of points while a fresh app gets `0`. Base substring/acronym
+scores are in the thousands, so the boost only matters when text
+relevance is close — the user's typo-prone query still beats their
+favourite app.
+
+See [launch-history.md](../launch-history.md) for the storage format,
+when the count is incremented, and why the signal is small.

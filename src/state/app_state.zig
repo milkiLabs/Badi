@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const config = @import("../config/mod.zig");
+const core = @import("../core/mod.zig");
 const desktop = @import("../core/desktop/mod.zig");
 const emoji = @import("../core/emoji/mod.zig");
 const Widgets = @import("widgets.zig").Widgets;
@@ -24,6 +25,7 @@ pub const AppState = struct {
     // Core
     allocator: std.mem.Allocator,
     io: std.Io,
+    env: *const std.process.Environ.Map,
     ui: Widgets,
     single_instance_server: ?std.Io.net.Server,
 
@@ -33,6 +35,8 @@ pub const AppState = struct {
 
     // Source data
     app_list: ?desktop.DesktopAppList,
+    launch_history: core.launch_history.History,
+    launched_app_id: ?[]const u8,
     emojis: ?emoji.EmojiData,
     emojis_loaded: bool,
     prefixes: std.ArrayList(config.Action),
@@ -104,6 +108,7 @@ pub const AppState = struct {
 
     pub const Selection = struct {
         data: []const u8,
+        app_id: ?[]const u8 = null,
     };
 
     /// Resolves the current selection's data from the already-synced
@@ -115,7 +120,7 @@ pub const AppState = struct {
         if (selected >= self.visible_indices.items.len) return null;
         const source_index = self.visible_indices.items[selected];
         return switch (self.mode) {
-            .apps => .{ .data = self.apps()[source_index].exec },
+            .apps => .{ .data = self.apps()[source_index].exec, .app_id = desktop.idOf(self.apps()[source_index]) },
             .piped => .{ .data = self.piped_items.items[source_index] },
             .emoji => .{ .data = self.emojiEntries()[source_index].glyph },
             .prefix, .url, .prompt => null,
@@ -124,6 +129,7 @@ pub const AppState = struct {
 
     pub fn deinit(self: *AppState) void {
         if (self.single_instance_server) |*server| server.deinit(self.io);
+        self.launch_history.deinit();
         if (self.app_list) |*list| list.deinit();
         if (self.emojis_loaded) {
             if (self.emojis) |*data| data.deinit(self.allocator);

@@ -83,11 +83,13 @@ fn loadDir(
 
         const parsed = parser.parse(content, locale, current_desktops) orelse continue;
         if (!xdg.tryExecAvailable(allocator, io, env, parsed.try_exec)) continue;
+        const owned_id = try allocator.dupe(u8, e.name);
+        errdefer allocator.free(owned_id);
         const owned_name = try allocator.dupe(u8, parsed.name);
         errdefer allocator.free(owned_name);
         const owned_exec = try allocator.dupe(u8, parsed.exec);
         errdefer allocator.free(owned_exec);
-        try apps.append(allocator, .{ .name = owned_name, .exec = owned_exec });
+        try apps.append(allocator, .{ .id = owned_id, .name = owned_name, .exec = owned_exec });
     }
 }
 

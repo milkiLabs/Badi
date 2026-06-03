@@ -26,8 +26,8 @@ Behavior depends on the current mode:
 | --------- | ------------------------------------------------------------------------------ |
 | Ctrl+U    | Clear the input                                                                |
 | Ctrl+W    | Delete previous word; in `prefix`/`url` on empty input, exit to apps           |
-| Ctrl+K    | ...                                                                            |
-| Ctrl+D    | ...                                                                            |
+| Ctrl+K    | Kill (cut) to end of line                                                      |
+| Ctrl+D    | Delete char under cursor                                                       |
 | Backspace | Delete character before cursor; in `prefix`/`url` on empty input, exit to apps |
 
 In `prefix` and `url` modes, **Backspace** and **Ctrl+W** on an empty

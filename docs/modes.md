@@ -58,7 +58,17 @@ Reads the selected `DesktopEntry` from the source list, parses its
 
 The "selected" data is resolved by `AppState.currentSelectionData()`,
 which dereferences `selected_index` → `visible_indices` → `app_list` to
-return the right `exec` string. Pure data — no Qt access.
+return the right `exec` string along with the app's stable id
+(`desktop.idOf`) for launch history bookkeeping. Pure data — no Qt
+access.
+
+**Ranking.** A successful launch (`exit_code == 0`) bumps the app's
+count in `$XDG_DATA_HOME/badi/history.json`. The count is fed back
+into the next session's ranking as a small additive boost
+(`log2(count)`) on top of the substring/acronym match score. With
+an empty query, the list reorders by history alone. See
+[launch-history.md](launch-history.md) for the storage format and
+the rationale for a weak signal.
 
 ### Piped mode
 
@@ -226,7 +236,7 @@ prefix/url: Escape, Backspace on empty input, or Ctrl-W on empty input.
 | --------------------------------- | ---------------------------------------------------- |
 | `src/state/mode.zig`              | `AppMode` union, `PromptConfig`, helpers             |
 | `src/modes/mod.zig`               | `dispatch(app)` — single switch                     |
-| `src/modes/apps.zig`              | Launch a .desktop entry                              |
+| `src/modes/apps.zig`              | Launch a .desktop entry (also records launch history on success) |
 | `src/modes/piped.zig`             | Print selected stdin line                            |
 | `src/modes/prefix.zig`            | Shell-template substitution + spawn                  |
 | `src/modes/url.zig`               | Prepend `https://` if needed + `xdg-open`            |

@@ -26,6 +26,8 @@ Start here, in this order:
   behavior, and exit codes.
 - **[stdin-detection.md](stdin-detection.md)** — TTY vs pipe vs
   `/dev/null` detection via `stat().kind`.
+- **[launch-history.md](launch-history.md)** — per-app launch counts,
+  `log2(count)` ranking boost, and the `history.json` storage format.
 - **[cicd.md](cicd.md)** — release build workflow on tag push
   (tarball + AppImage).
 - **[appimage.md](appimage.md)** — building and troubleshooting the

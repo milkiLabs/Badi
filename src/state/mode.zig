@@ -47,7 +47,7 @@ pub const EmojiConfig = struct {
     entry: EmojiEntry = .trigger,
 };
 
-pub const AppMode = union(enum) {
+pub const AppMode = union(enum(u8)) {
     /// Default: scan .desktop files, search and launch.
     apps: void,
     /// stdin is a pipe: stream lines, filter, print selection to stdout.

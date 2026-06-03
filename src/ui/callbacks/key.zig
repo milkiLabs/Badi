@@ -37,9 +37,6 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
     } else if (key == qk.Key_Down) {
         view.selectRelative(app, 1);
         event.Accept();
-    } else if (ctrl and key == qk.Key_C) {
-        self.Clear();
-        event.Accept();
     } else if (ctrl and key == qk.Key_W) {
         if (tryExitOnEmpty(self, app)) {
             event.Accept();

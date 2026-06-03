@@ -8,12 +8,16 @@ pub const ScoredItem = struct {
 pub const max_results = 50;
 
 /// Sort by score descending; ties broken by source index ascending.
-const Sort = struct {
+pub const Sort = struct {
     fn desc(_: void, a: ScoredItem, b: ScoredItem) bool {
         if (a.score != b.score) return a.score > b.score;
         return a.index < b.index;
     }
 };
+
+pub fn sortScored(items: []ScoredItem) void {
+    std.mem.sort(ScoredItem, items, {}, Sort.desc);
+}
 
 /// Score `query` against `candidate`.
 /// Returns >= 0 if it matches (higher = better), -1 if no match.
@@ -49,7 +53,7 @@ pub fn search(items: []const []const u8, query: []const u8, out: []ScoredItem) u
         }
     }
 
-    std.mem.sort(ScoredItem, out[0..count], {}, Sort.desc);
+    sortScored(out[0..count]);
 
     return count;
 }
@@ -76,7 +80,36 @@ pub fn searchMapped(
         }
     }
 
-    std.mem.sort(ScoredItem, out[0..count], {}, Sort.desc);
+    sortScored(out[0..count]);
+
+    return count;
+}
+
+/// Like `searchMapped`, with an additive score signal from caller-owned
+/// metadata. Useful for bounded personal ranking such as launch frequency.
+pub fn searchMappedBoosted(
+    comptime T: type,
+    comptime getText: fn (T) []const u8,
+    comptime getBoost: fn (*const anyopaque, T) i64,
+    boost_ctx: *const anyopaque,
+    items: []const T,
+    query: []const u8,
+    out: []ScoredItem,
+) usize {
+    std.debug.assert(query.len > 0);
+
+    var count: usize = 0;
+    for (items, 0..) |item, i| {
+        const s = score(query, getText(item));
+        if (s >= 0) {
+            if (count < out.len) {
+                out[count] = .{ .index = i, .score = s + getBoost(boost_ctx, item) };
+                count += 1;
+            }
+        }
+    }
+
+    sortScored(out[0..count]);
 
     return count;
 }
@@ -214,6 +247,30 @@ test "search caps at max_results" {
     var buf: [max_results]ScoredItem = undefined;
     const n = search(&items, "test", &buf);
     try std.testing.expect(n <= max_results);
+}
+
+test "boosted search uses additive ranking signal" {
+    const Item = struct {
+        name: []const u8,
+        boost: i64,
+
+        fn text(item: @This()) []const u8 {
+            return item.name;
+        }
+
+        fn scoreBoost(_: *const anyopaque, item: @This()) i64 {
+            return item.boost;
+        }
+    };
+
+    const items = [_]Item{
+        .{ .name = "alpha", .boost = 0 },
+        .{ .name = "alpine", .boost = 3 },
+    };
+    var buf: [max_results]ScoredItem = undefined;
+    const n = searchMappedBoosted(Item, Item.text, Item.scoreBoost, &items, &items, "alp", &buf);
+    try std.testing.expectEqual(@as(usize, 2), n);
+    try std.testing.expectEqual(@as(usize, 1), buf[0].index);
 }
 
 test "summit matches summits path" {

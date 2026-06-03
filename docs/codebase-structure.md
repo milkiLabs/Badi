@@ -18,8 +18,9 @@ clean.
 │  desktop/          │  callbacks/  (text, key,        │
 │    entry, parser,  │    click, piped, helpers)      │
 │    xdg, loader     │  factory, view, model,         │
-│  filter            │  status, piped_view            │
+│  filter            │    status, piped_view          │
 │  exec              │                                │
+│  launch_history    │                                │
 │  search            │                                │
 ├────────────────────┼────────────────────────────────┤
 │   modes/  (apps, piped, prefix, url, prompt)        │
@@ -44,7 +45,7 @@ clean.
 
 | File / dir              | Deps         | Purpose                                       |
 | ----------------------- | ------------ | --------------------------------------------- |
-| `core/mod.zig`          | std only     | Re-exports (`desktop`, `exec`, `filter`, `search`) |
+| `core/mod.zig`          | std only     | Re-exports (`desktop`, `exec`, `filter`, `launch_history`, `search`) |
 | `core/desktop/entry.zig`| std only     | `DesktopEntry` struct (parsed `.desktop` file) |
 | `core/desktop/parser.zig`| std only    | Parses key/value pairs from `[Desktop Entry]` blocks |
 | `core/desktop/xdg.zig`  | std only     | XDG directory enumeration |
@@ -52,7 +53,8 @@ clean.
 | `core/desktop/mod.zig`  | std only     | Re-exports `DesktopEntry`, `nameOf`, etc. |
 | `core/exec.zig`         | std only     | FreeDesktop exec string parsing, shell quoting |
 | `core/filter.zig`       | std only     | Generic fuzzy+substring filter using a comptime accessor |
-| `core/search.zig`       | std only     | Substring search helpers (legacy, used by `desktop.zig`) |
+| `core/launch_history.zig` | std only   | Per-app launch counts persisted to `XDG_DATA_HOME/badi/history.json`; `log2(count)` boost signal for ranking |
+| `core/search.zig`       | std only     | Substring search + ranking (`score`, `search`, `searchMapped`, `searchMappedBoosted`, `sortScored`) |
 
 All of `core/` is **pure Zig** — no Qt imports. Testable without libqt6zig.
 

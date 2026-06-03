@@ -11,16 +11,6 @@ and a landmine if a non-prompt caller ever sets a default).
 **T-shirt**: S.
 **Touches**: `ui/factory.zig`, possibly `ui/callbacks/text.zig`.
 
-### 4. `launched-but-failed` exit code
-
-**Why**: `apps.zig`, `prefix.zig`, `url.zig` all ignore the bool return
-of `QProcess.StartDetached22`. If `xdg-open` or `sh` is missing, Badi
-exits 0 and the user thinks the launch worked. The pattern is already in
-`emoji.zig::typeKeysAndExit` (item #6 of the refactor): set `exit_code`
-based on what actually succeeded.
-**T-shirt**: S.
-**Touches**: `modes/{apps,prefix,url}.zig`.
-
 ### 5. Make the `: ` emoji trigger configurable
 
 **Why**: It's a hardcoded `const` in `ui/callbacks/text.zig:14`. Some
@@ -32,13 +22,6 @@ users want a different trigger (`; `, `/`). A single line in
 ## Soon (1-2 months)
 
 Real features. Each one is its own short release.
-
-### 7. `clear` action binds to a key (e.g. Ctrl+U)
-
-**Why**: Currently `Ctrl+C` clears (line 41 of `key.zig`). `Ctrl+U` is the
-muscle-memory choice for "clear line" in readline/bash. Trivial to add.
-**T-shirt**: XS.
-**Touches**: `ui/callbacks/key.zig`.
 
 ### 8. Action history with ↑/↓ recall
 
@@ -70,18 +53,6 @@ with no warning. Add a `std.log.warn` for "unknown field X" and
 **T-shirt**: S.
 **Touches**: `config/loader.zig`.
 
-### 11. Sort `apps` results by launch frequency
-
-**Why**: The current `apps` mode shows all installed apps in source
-order, with substring/acronym matching. Ties on score are broken by
-source index, which is the .desktop file name. A tiny `launch_counts`
-hashmap (loaded from `~/.local/share/badi/history.json`) that bumps the
-score by `log2(count)` re-orders results the way the user expects
-("the thing I launch most often comes first even with a vague query").
-**T-shirt**: M.
-**Touches**: `core/search.zig`, new `core/launch_history.zig`,
-`app/exit_code.zig` (increment on success), `ui/model.zig`.
-
 ### 12. X11 fallback for the layer shell
 
 **Why**: `ui/wayland.zig` no-ops on X11. On X11 the window is a
@@ -112,18 +83,6 @@ arg) covers it.
 **T-shirt**: S.
 **Touches**: `config/actions.zig`, `modes/prefix.zig`.
 
-### 15. `--no-replace` flag for the single-instance protocol
-
-**Why**: Currently a second Badi always replaces the first. Some users
-want to "queue" (the new one waits, the old one closes on Escape).
-**T-shirt**: M.
-**Touches**: `app/single_instance.zig`, `app/cli.zig`,
-`ui/callbacks/replacement.zig`.
-
-## Later (3-6 months)
-
-Bigger work. Each one is its own project.
-
 ### 16. New mode: `calc`
 
 **Why**: A calculator launcher is a common ask. Take the current input,
@@ -133,7 +92,6 @@ launch the same way `print` works in `emoji.zig`. Reuses
 `core/search.zig`'s score function for the result (display the result
 with a high score so it always tops the list). Score-and-print pattern
 is reusable.
-**T-shirt**: M.
 **Touches**: new `core/calc.zig`, new `modes/calc.zig`,
 `state/mode.zig` (new variant), `ui/callbacks/text.zig` (new trigger),
 all per-mode dispatch sites.
@@ -204,15 +162,12 @@ would make the next ten modes free. The cost is runtime dispatch
 (vtable) instead of a comptime switch — but the per-mode launch is
 already a non-inlined function call across files, so the cost is
 already paid.
-**T-shirt**: L. Refactor + new API + migrate all 6 modes.
-**Touches**: a lot. Do it as its own milestone.
 
 ### 23. Plugin system for actions
 
 **Why**: The `Action` struct (trigger, name, icon, shell template) is
-hardcoded to a shell template. A user might want a Python plugin that
+hardcoded to a shell template. A user might want to build a plugin that
 queries a custom API. Same vtable pattern as #22.
-**T-shirt**: L. Only after #22.
 
 ### 24. Multi-display layer shell support
 
@@ -234,28 +189,11 @@ stable while letting `generateQss` be richer.
 **T-shirt**: M.
 **Touches**: `config/theme.zig`, `config/style.zig`.
 
-## Open questions
-
-Things I don't have a strong opinion on. Worth discussing before
-committing.
-
-### Q1. Embedded emoji slab vs lazy file load?
-
-**The question**: `@embedFile` puts the 200 KB binary in the executable
-and is available at process start with no I/O. A lazy `readFile` from
-`/usr/share/badi/emoji.bin` keeps the binary small and lets distros
-ship emoji as a separate package. The trade-off is "fat single-file
-launcher" vs "needs an install step".
-**My current lean**: Keep `@embedFile`. The 200 KB is well below the
-threshold where it matters, and "one file, runs anywhere" is a
-defining property of a launcher.
-
 ### Q2. Single binary or split into `badi` + `badi-emoji-data`?
 
 **The question**: Same trade-off as Q1, but at the package level. Split
 means a smaller `badi` package and an optional `badi-emoji-data`
-package. Nix/AUR users would appreciate this; deb users probably
-wouldn't.
+package.
 **My current lean**: Single package. The optional dep is more
 confusing than the 200 KB savings.
 
@@ -300,23 +238,3 @@ don't fit Badi's design.
   integrate with the desktop (single-instance replacement, clipboard
   via wl-copy, etc.). A standalone KMS render would skip the WM and
   not be a "launcher" anymore.
-- **Touch / mobile**: No. The keyboard-driven model is the product.
-- **Wayland protocols beyond layer-shell**: No. `wlr-layer-shell` is
-  the lowest common denominator that works on wlroots, KDE, and
-  GNOME-with-the-extension. Adding more protocols couples us to a
-  specific compositor.
-
-## How to read this
-
-- **Now** is what I'd merge next. Each is independent.
-- **Soon** is what I'd merge in the next 1-2 release cycles.
-- **Later** is a real feature, not a refactor. Each gets its own
-  design doc and review.
-- **Future** is the right shape but the wrong time. Don't start
-  these until the rest is shipped.
-- **Open questions** are unresolved. Pull requests that touch these
-  should come with a proposal, not just code.
-
-The "Now" list is small on purpose. Six small items, each
-independently shippable, is more valuable than three big ones that
-block each other.

@@ -4,13 +4,16 @@
 
 const std = @import("std");
 
-/// A single desktop application: display name + Exec string. Both strings
-/// are owned by the parent `DesktopAppList`'s allocator.
+/// A single desktop application: stable `.desktop` id + display name +
+/// Exec string. All strings are owned by the parent `DesktopAppList`'s
+/// allocator.
 pub const DesktopEntry = struct {
+    id: []const u8,
     name: []const u8,
     exec: []const u8,
 
     pub fn deinit(self: DesktopEntry, allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
         allocator.free(self.name);
         allocator.free(self.exec);
     }
@@ -44,4 +47,9 @@ test "DesktopAppList.empty round-trips" {
 /// DesktopEntry[] can `@import` it without reaching into UI.
 pub fn nameOf(e: DesktopEntry) []const u8 {
     return e.name;
+}
+
+/// Stable key for app-specific state such as launch history.
+pub fn idOf(e: DesktopEntry) []const u8 {
+    return if (e.id.len > 0) e.id else e.name;
 }

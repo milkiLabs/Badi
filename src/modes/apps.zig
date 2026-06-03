@@ -14,4 +14,7 @@ pub fn launch(app: *state.AppState) void {
     };
     defer command.deinit();
     util.launchDetached(app, command.program(), command.args());
+    if (app.exit_code == 0) {
+        app.launched_app_id = selection.app_id;
+    }
 }

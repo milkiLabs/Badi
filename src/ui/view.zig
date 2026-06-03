@@ -35,11 +35,49 @@ pub fn applyFilter(app: *state.AppState, query: []const u8) void {
 
 fn fillVisibleIndices(app: *state.AppState, query: []const u8) void {
     switch (app.mode) {
-        .apps => fillFor(core.desktop.DesktopEntry, core.desktop.nameOf, app.apps(), app, query),
+        .apps => fillApps(app, query),
         .piped => fillPiped(app, query),
         .emoji => fillFor(core.emoji.EmojiEntry, core.emoji.searchableOf, app.emojiEntries(), app, query),
         .prefix, .url, .prompt => {}, // synthetic single row in model.zig, or no list
     }
+}
+
+fn fillApps(app: *state.AppState, query: []const u8) void {
+    const source = app.apps();
+    if (source.len == 0) return;
+
+    app.visible_indices.ensureTotalCapacity(app.allocator, source.len) catch return;
+
+    const scratch = app.allocator.alloc(core.search.ScoredItem, source.len) catch return;
+    defer app.allocator.free(scratch);
+
+    const n = if (query.len == 0) rankAppsByHistory(app, source, scratch) else core.search.searchMappedBoosted(
+        core.desktop.DesktopEntry,
+        core.desktop.nameOf,
+        appHistoryBoost,
+        &app.launch_history,
+        source,
+        query,
+        scratch,
+    );
+
+    for (scratch[0..n]) |item| {
+        app.visible_indices.appendAssumeCapacity(item.index);
+    }
+}
+
+fn rankAppsByHistory(app: *state.AppState, source: []const core.desktop.DesktopEntry, out: []core.search.ScoredItem) usize {
+    const n = @min(source.len, out.len);
+    for (source[0..n], 0..) |entry, i| {
+        out[i] = .{ .index = i, .score = app.launch_history.boost(core.desktop.idOf(entry)) };
+    }
+    core.search.sortScored(out[0..n]);
+    return n;
+}
+
+fn appHistoryBoost(ctx: *const anyopaque, entry: core.desktop.DesktopEntry) i64 {
+    const history: *const core.launch_history.History = @ptrCast(@alignCast(ctx));
+    return history.boost(core.desktop.idOf(entry));
 }
 
 fn fillPiped(app: *state.AppState, query: []const u8) void {
