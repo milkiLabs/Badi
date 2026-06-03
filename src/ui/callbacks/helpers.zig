@@ -50,15 +50,14 @@ pub fn enterUrlMode(app: *state.AppState) void {
     app.ui.input.SetPlaceholderText(placeholder_url);
 }
 
-/// Enters emoji mode. Triggered by typing ": " in apps mode. Shows the
-/// "😀 Emoji" badge and switches the placeholder. The actual emoji data
-/// must already be loaded into `app.emojis` (buildState does this
-/// eagerly for any non-prompt mode).
+/// Enters emoji mode. Triggered by typing ": " in apps mode. This is the
+/// lazy-load boundary for the emoji entry slice; users who never type the
+/// trigger never allocate it.
 pub fn enterEmojiMode(app: *state.AppState) void {
-    if (app.emojis == null) {
-        // Should never happen — buildState pre-loads. Bail safely.
+    app.ensureEmojisLoaded() catch |err| {
+        std.log.err("failed to load emoji data: {}", .{err});
         return;
-    }
+    };
     app.mode = .{ .emoji = .{ .entry = .trigger } };
     app.ui.badge.SetText(emoji_badge);
     app.ui.badge.Show();

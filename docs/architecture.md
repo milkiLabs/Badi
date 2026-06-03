@@ -57,7 +57,6 @@ they're entered mid-session by typing a trigger. See
 │                │                                      │
 │                └── NO ───→ Apps Mode                 │
 │                             load .desktop files sync  │
-│                             load emoji slab (eager)  │
 │                             populate list             │
 │                             show window               │
 │                                                       │
@@ -67,6 +66,8 @@ they're entered mid-session by typing a trigger. See
 The two startup paths share everything except the work that only matters
 in apps mode (loading `.desktop` files) and the work that only matters
 in piped mode (installing the stdin notifier).
+The emoji binary remains embedded in the executable, but its heap entry
+index is allocated only when emoji mode is entered.
 
 ## App Lifecycle
 

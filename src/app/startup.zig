@@ -14,6 +14,7 @@ const App = @import("mod.zig");
 /// Constructs the AppState. Resolves the initial mode, loads user-
 /// configured prefix actions, and loads the .desktop file list (in apps
 /// mode) synchronously — so the window is responsive the moment it appears.
+/// Emoji entries are allocated only when emoji mode is actually entered.
 /// Mode resolution lives here so callers see a single source of truth
 /// (`app_state.mode`); `App.run` reads it instead of resolving again.
 pub fn buildState(
@@ -32,6 +33,7 @@ pub fn buildState(
         .exit_code = null,
         .app_list = null,
         .emojis = null,
+        .emojis_loaded = false,
         .piped_items = .empty,
         .stdin_pending = .empty,
         .prefixes = .empty,
@@ -64,13 +66,6 @@ pub fn buildState(
     // Load .desktop apps now so the window is fully populated on first show.
     if (settings.prompt == null) {
         app_state.app_list = try core.desktop.loadDesktopApps(gpa, io, env);
-    }
-
-    // Load emojis in any non-prompt mode so the ": " trigger is instant.
-    // The slab is binary and pre-resolved at compile time; load is just an
-    // allocation of the entry slice.
-    if (settings.prompt == null) {
-        app_state.emojis = try core.emoji.loadEmojis(gpa);
     }
 
     return app_state;
@@ -112,9 +107,18 @@ pub fn prepareInitialFrame(app: *state.AppState, arena: std.mem.Allocator, setti
     ui.factory.configureInitialFrame(app.ui, arena, settings);
 
     // First paint: apps/emoji show all items, piped shows the "waiting"
-    // status, prompt has nothing to show.
+    // status, prompt has nothing to show. Explicit --emoji is an actual
+    // emoji request, so allocate its entry index before the initial filter.
     switch (app.mode) {
-        .apps, .emoji => ui.view.applyFilter(app, ""),
+        .emoji => {
+            app.ensureEmojisLoaded() catch |err| {
+                std.log.err("failed to load emoji data: {}", .{err});
+                ui.status.updateNoResults(app);
+                return;
+            };
+            ui.view.applyFilter(app, "");
+        },
+        .apps => ui.view.applyFilter(app, ""),
         .piped => ui.status.updateNoResults(app),
         .prefix, .url, .prompt => {},
     }

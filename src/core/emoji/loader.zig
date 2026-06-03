@@ -32,7 +32,7 @@ const expected_version: u32 = 1;
 // `data` is a plain `[]const u8` — we never cast it to a struct, only
 // read individual integer fields from it via `std.mem.readInt`, which
 // works on any byte alignment.
-const data: []const u8 = @embedFile("data/emoji.bin");
+const embedded_slab: []const u8 = @embedFile("data/emoji.bin");
 
 // On-disk byte offsets for the record table.
 const header_size: usize = 16;
@@ -60,6 +60,7 @@ pub const EmojiData = struct {
 /// the binary in a single linear sweep — no JSON parsing, no string
 /// duplication. The only allocation is the `entries` slice itself.
 pub fn loadEmojis(allocator: std.mem.Allocator) !EmojiData {
+    const data = embedded_slab;
     if (data.len < header_size + footer_size) return error.SlabTooSmall;
 
     // Read the header fields individually (no struct, no alignment).

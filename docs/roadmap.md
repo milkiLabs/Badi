@@ -1,19 +1,5 @@
 # Roadmap
 
-Where Badi is going next. The codebase is small (~3,200 LOC), well-modularized
-(`core/` is pure data, `ui/` is the Qt layer, `modes/` is the per-mode
-dispatch), and has a clean test surface for the search and exec logic.
-This roadmap assumes the 18-item refactor (2025-2026) is the baseline.
-
-Items are grouped by **how soon I'd tackle them**, not by importance —
-importance is in the "Why" line. "T-shirt size" is a rough code estimate
-(1 day = S, 1 week = M, 2+ weeks = L).
-
-## Now (next 2-4 weeks)
-
-These are small enough to do in a sitting each, and they pay back quickly
-in stability or UX.
-
 ### 1. Re-entrancy guard for all programmatic `SetText` calls
 
 **Why**: `app.setInputText` guards the `textChanged` signal, but only
@@ -24,13 +10,6 @@ in stability or UX.
 and a landmine if a non-prompt caller ever sets a default).
 **T-shirt**: S.
 **Touches**: `ui/factory.zig`, possibly `ui/callbacks/text.zig`.
-
-### 2. `app-lifecycle.md` line-number refresh
-
-**Why**: Items 2/3 of the refactor reordered `App.create` and `App.run`;
-the doc still references the old line numbers.
-**T-shirt**: XS.
-**Touches**: `docs/app-lifecycle.md`.
 
 ### 3. Lazily load the emoji slab only on `:` trigger
 
@@ -52,10 +31,11 @@ visible item on every new line to find the insertion point. For a
 score calls on the last line. Most users won't hit this, but a `ps aux |
 badi` (50-200 lines) shows the cost in profiling.
 **T-shirt**: S. Two clean options:
-  - Keep a parallel `[]i64` of scores next to `visible_indices`; sort
-    becomes O(N) on append.
-  - Skip the sort entirely: append at end and let the user re-filter.
-**Touches**: `ui/piped_view.zig`, possibly a new `core/piped_sort.zig`.
+
+- Keep a parallel `[]i64` of scores next to `visible_indices`; sort
+  becomes O(N) on append.
+- Skip the sort entirely: append at end and let the user re-filter.
+  **Touches**: `ui/piped_view.zig`, possibly a new `core/piped_sort.zig`.
 
 ### 5. `launched-but-failed` exit code
 

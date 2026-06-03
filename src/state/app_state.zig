@@ -4,7 +4,7 @@
 // Fields are grouped by concern:
 //   - Core: allocator, io, ui
 //   - Mode: which mode is active, the final exit code
-//   - Source: the data being filtered (apps / piped lines)
+//   - Source: the data being filtered (apps / piped lines / emoji)
 //   - Piped state: incremental stdin buffering
 //   - Filter state: the current query, visible rows, selection
 
@@ -34,6 +34,7 @@ pub const AppState = struct {
     // Source data
     app_list: ?desktop.DesktopAppList,
     emojis: ?emoji.EmojiData,
+    emojis_loaded: bool,
     prefixes: std.ArrayList(config.Action),
 
     // Piped state
@@ -62,8 +63,20 @@ pub const AppState = struct {
 
     /// Returns the loaded emoji set, or an empty slice if not loaded.
     pub fn emojiEntries(self: *const AppState) []const emoji.EmojiEntry {
-        if (self.emojis) |data| return data.entries;
+        if (self.emojis_loaded) {
+            const data = self.emojis orelse return &.{};
+            return data.entries;
+        }
         return &.{};
+    }
+
+    /// Allocates the emoji entry slice the first time emoji mode is
+    /// requested. The embedded slab itself remains compile-time data; this
+    /// only pays for the process-owned index over that slab.
+    pub fn ensureEmojisLoaded(self: *AppState) !void {
+        if (self.emojis_loaded) return;
+        self.emojis = try emoji.loadEmojis(self.allocator);
+        self.emojis_loaded = true;
     }
 
     /// Number of rows the model exposes right now. Single source of truth
@@ -111,7 +124,9 @@ pub const AppState = struct {
     pub fn deinit(self: *AppState) void {
         if (self.single_instance_server) |*server| server.deinit(self.io);
         if (self.app_list) |*list| list.deinit();
-        if (self.emojis) |*data| data.deinit(self.allocator);
+        if (self.emojis_loaded) {
+            if (self.emojis) |*data| data.deinit(self.allocator);
+        }
         for (self.piped_items.items) |item| self.allocator.free(item);
         self.piped_items.deinit(self.allocator);
         self.stdin_pending.deinit(self.allocator);

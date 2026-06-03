@@ -58,8 +58,9 @@ pub const App = struct {
         });
 
         // AppState: resolves the initial mode, loads user actions, and
-        // loads the .desktop + emoji data for non-prompt modes. The
-        // global pointer is NOT set here — `app_state` is a local that
+        // loads the .desktop data for non-prompt modes. Emoji entries are
+        // loaded only if emoji mode is entered. The global pointer is NOT
+        // set here — `app_state` is a local that
         // gets moved into `self.state` when create returns, which would
         // dangle the global. `run` sets it once `self` is in its final
         // location.
