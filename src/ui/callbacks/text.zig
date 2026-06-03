@@ -14,8 +14,13 @@ const helpers = @import("helpers.zig");
 const emoji_trigger = ": ";
 
 pub fn onTextChanged(_: qt6.QLineEdit, text: [*:0]const u8) callconv(.c) void {
-    const app = state.global.get();
+    const app = state.global.assertGet();
     const query: []const u8 = std.mem.span(text);
+
+    // Re-entrancy guard: a `setInputText` call from a mode-transition
+    // helper fires this signal synchronously. The helper has already
+    // switched mode and re-filtered — the handler has nothing to do.
+    if (app.setting_text) return;
 
     // Prompt mode: input is the answer, not a launcher query. Just record.
     if (app.mode == .prompt) {

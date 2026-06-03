@@ -8,7 +8,7 @@ const state = @import("../../state/mod.zig");
 pub fn onReplacementRequested(notifier: qt6.QSocketNotifier, _: qt6.QSocketDescriptor, _: i32) callconv(.c) void {
     notifier.SetEnabled(false);
 
-    const app = state.global.get();
+    const app = state.global.assertGet();
     if (app.single_instance_server) |*server| {
         const stream = server.accept(app.io) catch {
             notifier.SetEnabled(true);

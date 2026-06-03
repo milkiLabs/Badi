@@ -34,14 +34,6 @@ pub const App = struct {
         const arena = init.arena.allocator();
         const gpa = init.gpa;
 
-        // Check single instance if in apps or emoji mode.
-        const mode = startup.resolveMode(init.io, settings);
-        var single_instance_server: ?std.Io.net.Server = null;
-        if (single_instance.enabled(mode)) {
-            single_instance_server = try single_instance.listenReplacingExisting(init.io);
-        }
-        errdefer if (single_instance_server) |*server| server.deinit(init.io);
-
         // Qt init.
         const argv = try qt6.init(gpa, init.minimal.args);
         errdefer qt6.deinit(gpa, argv);
@@ -55,24 +47,31 @@ pub const App = struct {
         errdefer widgets.main.Delete();
         ui.factory.applyTheme(widgets.main, theme, arena);
 
-        // Signal wiring.
+        // Signal wiring. The stdin notifier is wired separately in
+        // `prepareInitialFrame` (only in piped mode).
         ui.factory.wireSignals(widgets, .{
             .on_text_changed = ui.callbacks.onTextChanged,
             .on_key_press = ui.callbacks.onKeyPress,
             .on_model_row_count = ui.model.onModelRowCount,
             .on_model_data = ui.model.onModelData,
             .on_item_double_clicked = ui.callbacks.onItemDoubleClicked,
-            .on_stdin_activated = ui.callbacks.onStdinActivated,
         });
 
-        // AppState: load data. The global pointer is NOT set here —
-        // `app_state` is a local that gets moved into `self.state` when
-        // create returns, which would dangle the global. `run` sets it
-        // once `self` is in its final location.
+        // AppState: resolves the initial mode, loads user actions, and
+        // loads the .desktop + emoji data for non-prompt modes. The
+        // global pointer is NOT set here — `app_state` is a local that
+        // gets moved into `self.state` when create returns, which would
+        // dangle the global. `run` sets it once `self` is in its final
+        // location.
         var app_state = try startup.buildState(gpa, init.io, init.environ_map, widgets, settings);
-        app_state.single_instance_server = single_instance_server;
-        single_instance_server = null;
         errdefer app_state.deinit();
+
+        // Single-instance: bind the socket so a previous instance can be
+        // told to close. Only meaningful in apps or emoji mode. The mode
+        // is read from app_state so we resolve it exactly once.
+        if (single_instance.enabled(app_state.mode)) {
+            app_state.single_instance_server = try single_instance.listenReplacingExisting(init.io);
+        }
 
         return .{
             .arena = arena,
@@ -86,14 +85,14 @@ pub const App = struct {
         };
     }
 
-    /// Resolves the actual mode (stdin check), shows the window, starts
-    /// the event loop, and returns the process exit code.
+    /// Shows the window, starts the event loop, and returns the process
+    /// exit code. The initial mode is resolved once in `buildState`
+    /// (called from `create`) and is not re-resolved here.
     pub fn run(self: *App) u8 {
         // Set the global now that `self` is in its final stack frame.
         // Qt callbacks read app state through this pointer.
         state.global.set(&self.state);
 
-        self.state.mode = startup.resolveMode(self.io, self.settings);
         if (self.state.single_instance_server) |*server| {
             const notifier = qt6.QSocketNotifier.New4(
                 server.socket.handle,

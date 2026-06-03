@@ -9,18 +9,15 @@ const config = @import("../config/mod.zig");
 const state = @import("../state/mod.zig");
 const Widgets = state.Widgets;
 
-const prompt_window_height: u32 = 80;
-
-/// Bundles all C-ABI callback functions so `wireSignals` has a single
-/// argument instead of six. The optional `on_stdin_activated` is wired
-/// only in piped mode (the notifier is created in `app/startup.zig`).
+/// Bundles the C-ABI signal callbacks so `wireSignals` has a single
+/// argument. The stdin notifier is created and wired separately in
+/// `startup.prepareInitialFrame` (only in piped mode), not here.
 pub const SignalCallbacks = struct {
     on_text_changed: *const fn (qt6.QLineEdit, [*:0]const u8) callconv(.c) void,
     on_key_press: *const fn (qt6.QLineEdit, qt6.QKeyEvent) callconv(.c) void,
     on_model_row_count: *const fn (qt6.QAbstractListModel, qt6.QModelIndex) callconv(.c) i32,
     on_model_data: *const fn (qt6.QAbstractListModel, qt6.QModelIndex, i32) callconv(.c) qt6.QVariant,
     on_item_double_clicked: *const fn (qt6.QListView, qt6.QModelIndex) callconv(.c) void,
-    on_stdin_activated: ?*const fn (qt6.QSocketNotifier, qt6.QSocketDescriptor, i32) callconv(.c) void = null,
 };
 
 /// Applies the theme QSS to the main widget. No-op on failure.
@@ -53,7 +50,7 @@ pub fn build(arena: std.mem.Allocator, theme: config.Theme, prompt: ?state.Promp
             qt6.qnamespace_enums.WindowType.WindowStaysOnTopHint;
     main.SetWindowFlags(flags);
 
-    const window_height: u32 = if (is_prompt) prompt_window_height else theme.window_height;
+    const window_height: u32 = if (is_prompt) theme.prompt_window_height else theme.window_height;
     main.SetFixedSize2(@intCast(theme.window_width), @intCast(window_height));
 
     // Input row: badge (hidden by default) + line edit.

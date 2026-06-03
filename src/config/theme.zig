@@ -24,6 +24,7 @@ pub const Theme = struct {
     font_weight: []const u8 = "normal",
     window_width: u32 = 600,
     window_height: u32 = 450,
+    prompt_window_height: u32 = 80,
     window_padding: u32 = 14,
     item_spacing: u32 = 6,
     border_radius: u32 = 6,

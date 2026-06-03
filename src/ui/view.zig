@@ -8,8 +8,6 @@ const state = @import("../state/mod.zig");
 const core = @import("../core/mod.zig");
 const status = @import("status.zig");
 
-const display_role = qt6.qnamespace_enums.ItemDataRole.DisplayRole;
-
 /// Recompute visible rows for the current mode and query, reset the Qt
 /// model, update the no-results label, and select the first row if any.
 pub fn applyFilter(app: *state.AppState, query: []const u8) void {
@@ -24,7 +22,7 @@ pub fn applyFilter(app: *state.AppState, query: []const u8) void {
 
     fillVisibleIndices(app, query);
 
-    const has_results = computeHasResults(app, query);
+    const has_results = app.resultCount() > 0;
     if (has_results) app.selected_index = 0;
 
     app.ui.model.BeginResetModel();
@@ -80,17 +78,9 @@ fn identityStr(s: []const u8) []const u8 {
     return s;
 }
 
-fn computeHasResults(app: *const state.AppState, query: []const u8) bool {
-    return switch (app.mode) {
-        .prefix, .url => query.len > 0,
-        .prompt => false,
-        .apps, .piped, .emoji => app.visible_indices.items.len > 0,
-    };
-}
-
 /// Move selection by `direction` (negative = up). Wraps around.
 pub fn selectRelative(app: *state.AppState, direction: i32) void {
-    const len = resultCount(app);
+    const len = app.resultCount();
     if (len == 0) return;
 
     const current = currentModelRow(app) orelse 0;
@@ -111,13 +101,13 @@ pub fn syncSelectionFromIndex(app: *state.AppState, index: qt6.QModelIndex) void
     const row = index.Row();
     if (row < 0) return;
     const selected: usize = @intCast(row);
-    if (selected < resultCount(app)) {
+    if (selected < app.resultCount()) {
         app.selected_index = selected;
     }
 }
 
 pub fn selectModelRow(app: *state.AppState, row: usize) void {
-    if (row >= resultCount(app)) return;
+    if (row >= app.resultCount()) return;
 
     const parent = qt6.QModelIndex.New3();
     defer parent.Delete();
@@ -136,12 +126,4 @@ fn currentModelRow(app: *state.AppState) ?usize {
     const row = index.Row();
     if (row < 0) return app.selected_index;
     return @intCast(row);
-}
-
-fn resultCount(app: *const state.AppState) usize {
-    return switch (app.mode) {
-        .prefix, .url => if (app.current_query.items.len > 0) 1 else 0,
-        .prompt => 0,
-        .apps, .piped, .emoji => app.visible_indices.items.len,
-    };
 }

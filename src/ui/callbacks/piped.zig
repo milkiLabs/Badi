@@ -25,7 +25,7 @@ pub fn onStdinActivated(notifier: qt6.QSocketNotifier, _: qt6.QSocketDescriptor,
         },
     };
 
-    const app = state.global.get();
+    const app = state.global.assertGet();
 
     if (n == 0) {
         // EOF: flush the trailing partial line (no newline) and stop watching.

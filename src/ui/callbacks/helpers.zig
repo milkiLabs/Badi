@@ -33,7 +33,10 @@ pub fn enterPrefixMode(app: *state.AppState, cfg: config.Action) void {
     defer app.allocator.free(text);
     app.ui.badge.SetText(text);
     app.ui.badge.Show();
-    app.ui.input.SetText("");
+    // Use the guarded helper so the synchronous textChanged signal from
+    // clearing the input does not re-run mode detection (we're already in
+    // prefix mode) or re-filter redundantly (we re-filter below).
+    app.setInputText("");
     app.ui.input.SetPlaceholderText(placeholder_prefix);
     view.applyFilter(app, "");
 }
@@ -56,7 +59,7 @@ pub fn enterEmojiMode(app: *state.AppState) void {
         // Should never happen — buildState pre-loads. Bail safely.
         return;
     }
-    app.mode = .{ .emoji = .{ .action = .copy } };
+    app.mode = .{ .emoji = .{ .entry = .trigger } };
     app.ui.badge.SetText(emoji_badge);
     app.ui.badge.Show();
     app.ui.input.SetPlaceholderText(placeholder_emoji);

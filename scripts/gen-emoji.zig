@@ -15,19 +15,22 @@
 //   Records (count * 24 B)   glyph_off u32, glyph_len u16, u16 _pad
 //                            name_off u32,  name_len  u16, u16 _pad
 //                            kw_off   u32,  kw_len    u16, u16 _pad
+//   Footer (4 B)             magic "JOMB" — guards against truncation
 //
 // All integers little-endian. Each record is 24 B (C-ABI pads the u16s
 // after each u32 to 4-byte alignment). The runtime loader reads each
 // field via `std.mem.readInt` — no struct cast, no alignment trap.
 // The blob is written first; records are written last at file offset
 // 16 + blob_size, and the offsets in each record are absolute file
-// positions (so the blob-base offset is added at write time).
+// positions (so the blob-base offset is added at write time). The footer
+// is written last so the loader can verify the file isn't truncated.
 
 const std = @import("std");
 const Io = std.Io;
 const fs = std.fs;
 
 const magic = "BMOJ";
+const footer_magic = "JOMB";
 const format_version: u32 = 1;
 
 const Record = extern struct {
@@ -196,15 +199,17 @@ pub fn main(init: std.process.Init) !u8 {
         r.kw_off += blob_base;
     }
 
-    // Write the file: header, blob, records.
+    // Write the file: header, blob, records, footer.
     const records_size: u64 = @sizeOf(Record) * @as(u64, @intCast(written));
+    const footer = footer_magic.*[0..4].*;
     var out_file = try std.Io.Dir.cwd().createFile(io, out_path, .{});
     defer out_file.close(io);
     try out_file.writePositionalAll(io, std.mem.asBytes(&header), 0);
     try out_file.writePositionalAll(io, blob.items, @sizeOf(Header));
     try out_file.writePositionalAll(io, std.mem.sliceAsBytes(final_records), @sizeOf(Header) + blob.items.len);
+    try out_file.writePositionalAll(io, &footer, @sizeOf(Header) + blob.items.len + records_size);
 
-    const total: u64 = @sizeOf(Header) + blob.items.len + records_size;
+    const total: u64 = @sizeOf(Header) + blob.items.len + records_size + footer.len;
     std.debug.print("wrote {s}: {} entries, {d} bytes\n", .{ out_path, written, total });
     return 0;
 }

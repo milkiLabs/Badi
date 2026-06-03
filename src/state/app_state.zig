@@ -15,10 +15,10 @@ const emoji = @import("../core/emoji/mod.zig");
 const Widgets = @import("widgets.zig").Widgets;
 const mode_mod = @import("mode.zig");
 
-pub const AppMode = mode_mod.AppMode;
-pub const PromptConfig = mode_mod.PromptConfig;
-pub const EmojiConfig = mode_mod.EmojiConfig;
-pub const EmojiAction = mode_mod.EmojiAction;
+const AppMode = mode_mod.AppMode;
+const PromptConfig = mode_mod.PromptConfig;
+const EmojiConfig = mode_mod.EmojiConfig;
+const EmojiAction = mode_mod.EmojiAction;
 
 pub const AppState = struct {
     // Core
@@ -46,6 +46,14 @@ pub const AppState = struct {
     visible_indices: std.ArrayList(usize),
     selected_index: ?usize,
 
+    /// Re-entrancy guard for `setInputText`. A `SetText` call that we issue
+    /// programmatically (e.g. from `enterPrefixMode`) fires the
+    /// `textChanged` signal synchronously. The handler would re-run mode
+    /// detection and re-filter, which is wasted work — the helper has
+    /// already done both. Wrap programmatic writes in `setInputText` and
+    /// the handler short-circuits while the guard is set.
+    setting_text: bool,
+
     /// Returns the loaded desktop apps, or an empty slice if not loaded.
     pub fn apps(self: *const AppState) []const desktop.DesktopEntry {
         if (self.app_list) |list| return list.entries;
@@ -56,6 +64,28 @@ pub const AppState = struct {
     pub fn emojiEntries(self: *const AppState) []const emoji.EmojiEntry {
         if (self.emojis) |data| return data.entries;
         return &.{};
+    }
+
+    /// Number of rows the model exposes right now. Single source of truth
+    /// for `view.resultCount`, `view.computeHasResults`, and the Qt model
+    /// row-count callback — three callers that used to switch on `app.mode`
+    /// independently.
+    pub fn resultCount(self: *const AppState) usize {
+        return switch (self.mode) {
+            .prefix, .url => if (self.current_query.items.len > 0) 1 else 0,
+            .prompt => 0,
+            .apps, .piped, .emoji => self.visible_indices.items.len,
+        };
+    }
+
+    /// Sets the input field text without triggering a `textChanged` re-entry.
+    /// Use this for programmatic writes that the user did not type — the
+    /// caller is responsible for any state changes the new text implies
+    /// (mode switch, re-filter, etc.).
+    pub fn setInputText(self: *AppState, text: []const u8) void {
+        self.setting_text = true;
+        defer self.setting_text = false;
+        self.ui.input.SetText(text);
     }
 
     pub const Selection = struct {

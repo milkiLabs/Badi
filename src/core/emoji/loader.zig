@@ -7,6 +7,10 @@
 //   Records (count * 24 B)   u32 glyph_off, u16 glyph_len, u16 _pad
 //                            u32 name_off,  u16 name_len,  u16 _pad
 //                            u32 kw_off,    u16 kw_len,    u16 _pad
+//   Footer (4 B)             magic[4] "JOMB" — guards against truncation
+//                            (the records table is sized to `count * 24`
+//                            from the end of the file, so a truncated
+//                            blob would silently mis-size it)
 //
 // Record offsets are absolute file positions. The blob is laid out in
 // the same order as the records (each record's three strings back-to-back
@@ -22,6 +26,7 @@ const std = @import("std");
 const entry_mod = @import("entry.zig");
 
 const magic = "BMOJ";
+const footer_magic = "JOMB";
 const expected_version: u32 = 1;
 
 // `data` is a plain `[]const u8` — we never cast it to a struct, only
@@ -31,6 +36,7 @@ const data: []const u8 = @embedFile("data/emoji.bin");
 
 // On-disk byte offsets for the record table.
 const header_size: usize = 16;
+const footer_size: usize = 4;
 const record_size: usize = 24;
 const glyph_off_off: usize = 0;
 const glyph_len_off: usize = 4;
@@ -54,7 +60,7 @@ pub const EmojiData = struct {
 /// the binary in a single linear sweep — no JSON parsing, no string
 /// duplication. The only allocation is the `entries` slice itself.
 pub fn loadEmojis(allocator: std.mem.Allocator) !EmojiData {
-    if (data.len < header_size) return error.SlabTooSmall;
+    if (data.len < header_size + footer_size) return error.SlabTooSmall;
 
     // Read the header fields individually (no struct, no alignment).
     if (!std.mem.eql(u8, data[0..4], magic)) return error.BadMagic;
@@ -64,10 +70,15 @@ pub fn loadEmojis(allocator: std.mem.Allocator) !EmojiData {
     if (count == 0) return EmojiData{ .entries = &.{} };
     _ = std.mem.readInt(u32, data[12..16][0..4], .little); // reserved
 
+    // Verify the footer magic and locate the records table relative to it.
+    // Without the footer check, a truncated file would silently mis-size
+    // `records_start` (the loader works backwards from data.len).
+    const footer_off = data.len - footer_size;
+    if (!std.mem.eql(u8, data[footer_off..], footer_magic)) return error.SlabCorrupt;
     const records_bytes_len: usize = count * record_size;
-    const records_start: usize = data.len - records_bytes_len;
+    const records_start: usize = footer_off - records_bytes_len;
     if (records_start < header_size) return error.SlabCorrupt;
-    if (records_start + records_bytes_len != data.len) return error.SlabCorrupt;
+    if (records_start + records_bytes_len != footer_off) return error.SlabCorrupt;
 
     const entries = try allocator.alloc(entry_mod.EmojiEntry, count);
     errdefer allocator.free(entries);

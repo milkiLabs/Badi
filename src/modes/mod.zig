@@ -8,10 +8,12 @@
 
 const state = @import("../state/mod.zig");
 
-/// Routes the active mode to its launch function. Direct switch is
-/// preferred over a function-pointer table: Zig can't easily coerce
-/// heterogeneous function literals into a single vtable type, and the
-/// inlined switch is the same number of lines.
+/// Routes the active mode to its launch function. A direct switch is
+/// preferred over a vtable even though every launch function shares the
+/// same signature: the compiler enforces exhaustiveness (a new AppMode
+/// variant without a dispatch case is a compile error), the inlined
+/// direct calls avoid an indirect jump, and the total line count is
+/// the same.
 pub fn dispatch(app: *state.AppState) void {
     switch (app.mode) {
         .apps => @import("apps.zig").launch(app),

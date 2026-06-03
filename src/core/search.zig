@@ -7,6 +7,14 @@ pub const ScoredItem = struct {
 
 pub const max_results = 50;
 
+/// Sort by score descending; ties broken by source index ascending.
+const Sort = struct {
+    fn desc(_: void, a: ScoredItem, b: ScoredItem) bool {
+        if (a.score != b.score) return a.score > b.score;
+        return a.index < b.index;
+    }
+};
+
 /// Score `query` against `candidate`.
 /// Returns >= 0 if it matches (higher = better), -1 if no match.
 pub fn score(query: []const u8, candidate: []const u8) i64 {
@@ -41,12 +49,7 @@ pub fn search(items: []const []const u8, query: []const u8, out: []ScoredItem) u
         }
     }
 
-    std.mem.sort(ScoredItem, out[0..count], {}, struct {
-        fn desc(_: void, a: ScoredItem, b: ScoredItem) bool {
-            if (a.score != b.score) return a.score > b.score;
-            return a.index < b.index;
-        }
-    }.desc);
+    std.mem.sort(ScoredItem, out[0..count], {}, Sort.desc);
 
     return count;
 }
@@ -73,12 +76,7 @@ pub fn searchMapped(
         }
     }
 
-    std.mem.sort(ScoredItem, out[0..count], {}, struct {
-        fn desc(_: void, a: ScoredItem, b: ScoredItem) bool {
-            if (a.score != b.score) return a.score > b.score;
-            return a.index < b.index;
-        }
-    }.desc);
+    std.mem.sort(ScoredItem, out[0..count], {}, Sort.desc);
 
     return count;
 }

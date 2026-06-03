@@ -11,9 +11,11 @@ const state = @import("../state/mod.zig");
 const ui = @import("../ui/mod.zig");
 const App = @import("mod.zig");
 
-/// Constructs the AppState. Loads user-configured prefix actions and the
-/// .desktop file list (in apps mode) synchronously, so the window is
-/// responsive the moment it appears.
+/// Constructs the AppState. Resolves the initial mode, loads user-
+/// configured prefix actions, and loads the .desktop file list (in apps
+/// mode) synchronously — so the window is responsive the moment it appears.
+/// Mode resolution lives here so callers see a single source of truth
+/// (`app_state.mode`); `App.run` reads it instead of resolving again.
 pub fn buildState(
     gpa: std.mem.Allocator,
     io: std.Io,
@@ -26,7 +28,7 @@ pub fn buildState(
         .io = io,
         .ui = widgets,
         .single_instance_server = null,
-        .mode = .apps, // refined in resolveMode at run time
+        .mode = resolveMode(io, settings),
         .exit_code = null,
         .app_list = null,
         .emojis = null,
@@ -37,6 +39,7 @@ pub fn buildState(
         .visible_indices = .empty,
         .selected_index = null,
         .stdin_eof = false,
+        .setting_text = false,
     };
     errdefer app_state.deinit();
 
@@ -91,8 +94,7 @@ pub fn resolveMode(
 }
 
 /// Wires the QSocketNotifier for piped mode and applies the initial
-/// filter. Idempotent for the same mode; safe to call only after
-/// `resolveMode` has set the actual mode.
+/// filter. Requires `app.mode` to be set (done by `buildState`).
 pub fn prepareInitialFrame(app: *state.AppState, arena: std.mem.Allocator, settings: App.Settings) void {
     // In piped mode, watch stdin for incoming data.
     if (app.mode == .piped) {

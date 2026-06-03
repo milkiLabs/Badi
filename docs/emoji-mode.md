@@ -72,25 +72,33 @@ file format is a hand-rolled little-endian slab:
 
 ```
 ┌────────────────── Header (16 bytes) ──────────────────┐
-│ magic:   8 bytes  = "BADIEMOJ"                         │
-│ version: u16      = 1                                  │
-│ count:   u32      = 1914 (no skin tone variants)       │
-│ _reserved: 2 bytes                                    │
-├────────────────── Blob (≈ 157 KB) ─────────────────────┤
-│ glyph strings, name strings, keyword strings,         │
-│ each null-terminated, in that order.                  │
-│ Offsets in the records table point at the start of    │
-│ each string (absolute file positions).                │
-├────────────────── Records (1914 × 24 bytes) ───────────┤
-│ per-entry:                                           │
-│   glyph_off: u32, glyph_len: u16, _pad: u16          │
-│   name_off:  u32, name_len:  u16, _pad: u16          │
-│   kw_off:    u32, kw_len:    u16, _pad: u16          │
+│ magic:   [4]u8    = "BMOJ"                             │
+│ version: u32      = 1                                  │
+│ count:   u32      = number of entries (no skin tones)  │
+│ _reserved: u32    = 0                                  │
+├────────────────── Blob (≈ 153 KB) ─────────────────────┤
+│ glyph strings, name strings, joined                   │
+│ "name kw1 kw2 ..." strings — back to back,            │
+│ no null terminators.                                  │
+│ Offsets in the records table are absolute file        │
+│ positions (header is added at write time).            │
+├────────────────── Records (N × 24 bytes) ──────────────┤
+│ per-entry:                                            │
+│   glyph_off: u32, glyph_len: u16, _pad: u16           │
+│   name_off:  u32, name_len:  u16, _pad: u16           │
+│   kw_off:    u32, kw_len:    u16, _pad: u16           │
+├────────────────── Footer (4 bytes) ────────────────────┤
+│ magic: [4]u8 = "JOMB" — guards against truncation.    │
+│ Without the footer, a partial file would silently      │
+│ mis-size the records table (the loader works           │
+│ backwards from file end).                             │
 └────────────────────────────────────────────────────────┘
 ```
 
-The records table is the last section of the file, so the loader locates
-it by subtraction: `records_start = file_size - count * 24`.
+The records table is the last section before the footer, so the loader
+locates it by subtraction:
+`records_start = file_size - footer_size - count * 24`, then verifies
+the footer magic.
 
 ### Why 24 bytes per record?
 
@@ -163,8 +171,9 @@ shapes.
 
 ## Performance
 
-- 1914 entries, ~30 KB of `EmojiEntry` slice (3 pointers × 1914 = 46 KB
-  on 64-bit).
+- 1894 entries (no skin tone variants; the upstream `emoji-test.txt`
+  list minus duplicates the generator drops), ~46 KB of `EmojiEntry`
+  slice (3 pointers × 1894 on 64-bit).
 - The blob is in `.rodata` (no allocation, no copy).
 - Search uses the same `core.filter.filter` as apps mode — bounded at
   50 results (`search.max_results`).

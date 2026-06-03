@@ -13,7 +13,7 @@ const qk = qt6.qnamespace_enums.Key;
 const km = qt6.qnamespace_enums.KeyboardModifier;
 
 pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
-    const app = state.global.get();
+    const app = state.global.assertGet();
     const key = event.Key();
     const ctrl = (event.Modifiers() & km.ControlModifier) != 0;
 
@@ -41,8 +41,7 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
         self.Clear();
         event.Accept();
     } else if (ctrl and key == qk.Key_W) {
-        if (inputIsEmpty(self, app)) {
-            if (canExitToApps(app.mode)) helpers.exitToApps(app);
+        if (tryExitOnEmpty(self, app)) {
             event.Accept();
             return;
         }
@@ -50,8 +49,7 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
         self.Del();
         event.Accept();
     } else if (key == qk.Key_Backspace) {
-        if (inputIsEmpty(self, app)) {
-            if (canExitToApps(app.mode)) helpers.exitToApps(app);
+        if (tryExitOnEmpty(self, app)) {
             event.Accept();
             return;
         }
@@ -89,4 +87,14 @@ fn inputIsEmpty(self: qt6.QLineEdit, app: *state.AppState) bool {
     const text = self.Text(app.allocator);
     defer app.allocator.free(text);
     return text.len == 0;
+}
+
+/// Shared by Ctrl+W and Backspace: if the input is empty, exit to apps
+/// (when the mode allows it) and report the event as handled. The caller
+/// still has to `event.Accept()` in both branches — this only reports
+/// whether the key was consumed.
+fn tryExitOnEmpty(self: qt6.QLineEdit, app: *state.AppState) bool {
+    if (!inputIsEmpty(self, app)) return false;
+    if (canExitToApps(app.mode)) helpers.exitToApps(app);
+    return true;
 }

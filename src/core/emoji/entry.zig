@@ -23,9 +23,3 @@ pub const EmojiEntry = struct {
 pub fn searchableOf(e: EmojiEntry) []const u8 {
     return e.keywords;
 }
-
-/// Comptime accessor that searches the name only. Kept for tests and for
-/// callers that want strict name matching.
-pub fn nameOf(e: EmojiEntry) []const u8 {
-    return e.name;
-}
