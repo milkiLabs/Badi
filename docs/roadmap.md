@@ -11,19 +11,7 @@ and a landmine if a non-prompt caller ever sets a default).
 **T-shirt**: S.
 **Touches**: `ui/factory.zig`, possibly `ui/callbacks/text.zig`.
 
-### 3. Lazily load the emoji slab only on `:` trigger
-
-**Why**: `buildState` embeds the 200 KB emoji binary via `@embedFile` and
-allocates an entry slice eagerly. For users who never type `: `, that's
-a permanent cost. Keep `@embedFile` (no point lazy-loading the bytes), but
-skip the entry-slice allocation until the trigger fires. Use a
-`@embedFile` const plus a `loaded: AtomicBool` on `AppState` (or a simple
-plain bool, since the load happens before the event loop).
-**T-shirt**: S.
-**Touches**: `core/emoji/loader.zig`, `app/startup.zig`,
-`ui/callbacks/helpers.zig` (`enterEmojiMode`).
-
-### 5. `launched-but-failed` exit code
+### 4. `launched-but-failed` exit code
 
 **Why**: `apps.zig`, `prefix.zig`, `url.zig` all ignore the bool return
 of `QProcess.StartDetached22`. If `xdg-open` or `sh` is missing, Badi
@@ -33,7 +21,7 @@ based on what actually succeeded.
 **T-shirt**: S.
 **Touches**: `modes/{apps,prefix,url}.zig`.
 
-### 6. Make the `: ` emoji trigger configurable
+### 5. Make the `: ` emoji trigger configurable
 
 **Why**: It's a hardcoded `const` in `ui/callbacks/text.zig:14`. Some
 users want a different trigger (`; `, `/`). A single line in

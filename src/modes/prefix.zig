@@ -3,9 +3,9 @@
 // the shell-quoted query. Detached so the launched process survives exit.
 
 const std = @import("std");
-const qt6 = @import("libqt6zig");
 const state = @import("../state/mod.zig");
 const core = @import("../core/mod.zig");
+const util = @import("util.zig");
 
 const placeholder_token = "%s";
 
@@ -22,8 +22,7 @@ pub fn launch(app: *state.AppState) void {
     const final_cmd = compose(app.allocator, cfg.action, quoted_query) catch return;
     defer app.allocator.free(final_cmd);
 
-    _ = qt6.QProcess.StartDetached22(app.allocator, "sh", &[_][]const u8{ "-c", final_cmd });
-    _ = app.ui.main.Close();
+    util.launchDetached(app, "sh", &.{ "-c", final_cmd });
 }
 
 /// Substitutes %s in `template` with `quoted_query`. If %s is absent,

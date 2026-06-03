@@ -177,5 +177,9 @@ shapes.
 - The blob is in `.rodata` (no allocation, no copy).
 - Search uses the same `core.filter.filter` as apps mode — bounded at
   50 results (`search.max_results`).
-- Slab is loaded eagerly in `buildState` for any non-prompt mode
-  (~30 KB allocation), so the `": "` trigger feels instant.
+- The entry slice is **lazy-loaded** via `AppState.ensureEmojisLoaded`:
+  the slab itself stays embedded, but the heap index over it is only
+  allocated when emoji mode is first entered (initial `--emoji` flag,
+  or the first `": "` trigger). Users who never enter emoji mode never
+  pay for the ~46 KB allocation. The trigger remains instant — the
+  loader is a single linear sweep, no I/O.

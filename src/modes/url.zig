@@ -3,8 +3,8 @@
 // launched browser/process survives Badi exit.
 
 const std = @import("std");
-const qt6 = @import("libqt6zig");
 const state = @import("../state/mod.zig");
+const util = @import("util.zig");
 
 const https_prefix = "https://";
 
@@ -23,8 +23,7 @@ pub fn launch(app: *state.AppState) void {
     };
     defer if (!hasScheme(query)) app.allocator.free(target);
 
-    _ = qt6.QProcess.StartDetached22(app.allocator, "xdg-open", &[_][]const u8{target});
-    _ = app.ui.main.Close();
+    util.launchDetached(app, "xdg-open", &.{target});
 }
 
 fn hasScheme(text: []const u8) bool {
