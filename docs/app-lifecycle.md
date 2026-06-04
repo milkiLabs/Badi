@@ -33,20 +33,18 @@ Steps:
    on_item_double_clicked, on_stdin_activated })`. The stdin's
    `on_stdin_activated` is wired even if not currently used — it's a
    null pointer that the notifier activation would only call if it existed.
-6. Load the AppState via `startup.buildState`. This:
+6. Build the AppState via `startup.buildState`, which **heap-allocates**
+   the `AppState` via `gpa.create` and returns `*AppState`. This makes
+   the pointer stable for the whole process — no risk of a ctx pointer
+   dangling because a stack frame moved on. `buildState`:
    - Loads user-configured prefix actions from `config.loadActions`,
      duplicating the slices into the long-lived gpa (the loader's arena
      is freed after duping).
    - Loads `.desktop` apps synchronously into `app_state.app_list`
      (skipped in prompt mode).
+   - Resolves the initial mode (`resolveInitialMode`).
 
-Returns the assembled `App` (by value). The AppState lives inside the
-returned App.
-
-**Important:** `state.global` is **not** set in `create`. The AppState is
-a local `app_state` that gets moved into `self.state` when `create`
-returns. Setting the global here would leave a dangling pointer. `run`
-sets it once `self` is in its final stack frame.
+`create` stores the returned pointer in `self.state: *AppState`.
 
 Error handling: each step is paired with an `errdefer` that unwinds the
 already-initialized bits. If `create` fails, the caller never sees a
@@ -62,20 +60,16 @@ does not return until the user closes the window or triggers an exit.
 
 Steps:
 
-1. `state.global.set(&self.state)` — install the C-ABI global pointer.
-   Has to happen here, not in `create`, because the AppState is moved
-   into `self` when `create` returns. Setting it in `create` would leave
-   a dangling pointer.
-2. `startup.resolveMode` — see [architecture.md](architecture.md#overview).
-   Returns the initial `AppMode` (`.apps`, `.piped`, or `.prompt`).
-3. `startup.prepareInitialFrame` — for piped mode, install the
+1. `state.global.set(self.state)` — install the C-ABI global pointer so
+   the C-ABI signal callbacks (called by Qt) can reach the AppState.
+2. `startup.prepareInitialFrame` — for piped mode, install the
    `QSocketNotifier`; for prompt mode, set the title, prefill, and
    focus; for apps mode, do the first filter pass. See
    [architecture.md](architecture.md) for per-mode details.
-4. `ui.main.Show()` — show the window. Qt invokes `onModelRowCount` /
+3. `ui.main.Show()` — show the window. Qt invokes `onModelRowCount` /
    `onModelData` to populate the list during the first layout pass.
-5. `qt6.QApplication.Exec()` — block until the event loop exits.
-6. `app.exit_code.resolve(&self.state)` — pick the final exit code.
+4. `qt6.QApplication.Exec()` — block until the event loop exits.
+5. `app.exit_code.resolve(self.state)` — pick the final exit code.
 
 The returned `u8` is what `main` returns to the OS.
 
@@ -88,9 +82,12 @@ Releases resources in **reverse order of allocation**:
 1. `self.state.deinit()` — frees `app_list`, `piped_items`,
    `stdin_pending`, `prefixes` (with their inner slices), `current_query`,
    `visible_indices`. **Not** the widget handles — Qt owns them.
-2. `self.qapp.Delete()` — frees all Qt-owned widgets (main, list, input,
+2. `self.gpa.destroy(self.state)` — frees the heap-allocated AppState
+   (last step of the cleanup chain, since `deinit` above already walked
+   the internal slices).
+3. `self.qapp.Delete()` — frees all Qt-owned widgets (main, list, input,
    badge, model, no_results) and the notifier (parented to main).
-3. `qt6.deinit(self.gpa, self.argv)` — frees the `argv` buffer that
+4. `qt6.deinit(self.gpa, self.argv)` — frees the `argv` buffer that
    `qt6.init` allocated.
 
 The caller is responsible for calling `destroy` after a successful

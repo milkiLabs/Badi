@@ -67,11 +67,19 @@ code that was never read:
   populated or read. Removed.
 - `AppState.hasBadge()` method — duplicate of `badgeText() != null`
   and never called. Removed.
+- `AppState.hasListSource()` method — a thin wrapper around
+  `app.mode.plugin.has_list_source`. No callers, since the only
+  callers had already inlined the field access. Removed.
 - `view.zig::applyFilter` early return for "prompt" — the prompt
   mode's `has_list_source = false` already prevents the filter
   call, so the id check was dead. Removed.
 - `EmojiAction` import in `app_state.zig` — only used by the
   removed `hasBadge`. Removed.
+- `api.noLaunch` helper — never assigned (the `Mode` trait requires
+  a `launch` fn, not an optional one). Removed.
+- `exit_code.zig` inline `@import("../plugins/api.zig")` inside a
+  function signature — replaced with a top-level `const plugin = ...`
+  for consistency with the rest of the file.
 
 ## Remaining (3 items)
 
@@ -199,7 +207,10 @@ Mostly done. The remaining gaps:
 ## Migration commit log (newest first)
 
 ```
-378fbdf docs: update modes/roadmap/plan for the plugin system migration
+803f378 remove dead code: hasListSource, noLaunch, inline import
+bdabb35 heap-allocate AppState; remove dead code; simplify
+f0dfb34 add docs/plugin-migration-status.md; minor startup/mod tweaks
+378fbbf docs: update modes/roadmap/plan for the plugin system migration
 cf849a1 delete dead per-mode files; move util to plugins/
 2bff804 migrate mode dispatch from union switch to plugin vtable
 9ba62b6 (cherry-picked) plugin system: add Mode trait, registry, and built-in modes

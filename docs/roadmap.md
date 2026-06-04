@@ -31,7 +31,8 @@ cycle. Reuses `core/piped_sort.zig` if #4 lands, or just a separate
 `std.ArrayList([]const u8)` per `Action`.
 **T-shirt**: M.
 **Touches**: `state/app_state.zig` (new `history` field per action),
-`ui/callbacks/key.zig`, `modes/prefix.zig`, a small `config/history.zig`.
+`ui/callbacks/key.zig`, `plugins/builtin.zig::actionLaunch` (or a new
+helper), a small `config/history.zig`.
 
 ### 9. Fuzzy prefix matching in trigger config
 
@@ -85,13 +86,13 @@ helper in `plugins/builtin.zig`. See
 **Why**: A calculator launcher is a common ask. Take the current input,
 parse it as an arithmetic expression (using a tiny expression parser
 built for the job — no `eval()` of shell), format the result, and
-launch the same way `print` works in `emoji.zig`. Reuses
+launch the same way `print` works in the emoji mode. Reuses
 `core/search.zig`'s score function for the result (display the result
 with a high score so it always tops the list). Score-and-print pattern
 is reusable.
-**Touches**: new `core/calc.zig`, new `modes/calc.zig`,
-`state/mode.zig` (new variant), `ui/callbacks/text.zig` (new trigger),
-all per-mode dispatch sites.
+**Touches**: new `core/calc.zig`, new `plugins/calc.zig` (or add
+to `plugins/builtin.zig`), `ui/callbacks/text.zig` (new trigger),
+`app/startup.zig::resolveInitialMode` (no change — non-initial).
 
 ### 17. New mode: `bookmarks`
 
@@ -100,8 +101,9 @@ all per-mode dispatch sites.
 `~/.local/share/badi/bookmarks.json`. File mode uses `fd`-style search
 on a configured root.
 **T-shirt**: M each. Two modes, similar shape.
-**Touches**: new `modes/{bookmarks,file}.zig`, `state/mode.zig`,
-`config/actions.zig` (or a separate `config/sources.zig`).
+**Touches**: new `plugins/{bookmarks,file}.zig` (or additions to
+`plugins/builtin.zig`), `config/actions.zig` (or a separate
+`config/sources.zig`).
 
 ### 18. AUR / deb / nix packages
 
@@ -151,14 +153,14 @@ These need a longer conversation before code.
 ### 22. Plugin system for modes — **DONE**
 
 **Why**: Six modes is enough to feel the cost of "one more" — every
-new mode touches `state/mode.zig`, the dispatch switch, the model, the
-view, the key handler, and the status updater. A `Mode` trait with
-required methods (`launch`, `displayRow`, `onTextChanged`, `onKeyPress`,
-`hasListSource`, `hasBadge`, `resultCount`) and a registration API
-would make the next ten modes free. The cost is runtime dispatch
-(vtable) instead of a comptime switch — but the per-mode launch is
-already a non-inlined function call across files, so the cost is
-already paid.
+new mode used to touch `state/mode.zig`, the dispatch switch, the
+model, the view, the key handler, and the status updater. A `Mode`
+trait with required methods (`launch`, `displayRow`, `resultCount`,
+`filter`, `onTextChanged`, `onKeyPress`, `beforeEnter`, etc.) and a
+registration API would make the next ten modes free. The cost is
+runtime dispatch (vtable) instead of a comptime switch — but the
+per-mode launch is already a non-inlined function call across files,
+so the cost is already paid.
 
 **Status**: Landed on `plugin-migration`. The trait (`plugins/api.zig`),
 the six built-in modes (`plugins/builtin.zig`), the generic

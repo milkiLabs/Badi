@@ -78,17 +78,19 @@ prepared.
 
 Startup flow (in `app.App.run` and `app.startup`):
 
-1. `state.global.set(&self.state)` — install the C-ABI global pointer.
-   This happens here, not in `create`, because the AppState is moved
-   into `self` when `create` returns (a stack-local pointer would
-   dangle).
-2. `startup.buildState` (called from `create`) has already resolved
-   `app_state.mode`; `App.run` reads it as the single source of truth.
-   It also loads the per-app launch history from
-   `$XDG_DATA_HOME/badi/history.json` (failures are swallowed — the
-   launcher is still useful with an empty history).
-3. `startup.prepareInitialFrame(...)` — wires the `QSocketNotifier` for
-   piped mode, sets the window title, calls
+1. `startup.buildState` (called from `create`) heap-allocates the
+   `AppState` via `gpa.create`, populates it (resolves `mode`, loads
+   the per-app launch history from `$XDG_DATA_HOME/badi/history.json`
+   — failures are swallowed — the launcher is still useful with an
+   empty history), and returns `*AppState`. `App.create` stores the
+   pointer in `self.state`. Heap allocation makes the pointer
+   stable for the whole process — no risk of dangling into a
+   moved-from stack frame.
+2. `state.global.set(&self.state)` — install the C-ABI global pointer
+   so C-ABI signal callbacks can reach the AppState.
+3. `App.run` reads `self.state.mode` as the single source of truth
+   and calls `startup.prepareInitialFrame(...)`, which wires the
+   `QSocketNotifier` for piped mode, sets the window title, calls
    `ui.factory.configureInitialFrame`, and does the first filter pass
    (apps: empty query, piped: status label).
 4. `ui.main.Show()` — show the window. Qt invokes `onModelRowCount` /
@@ -98,6 +100,7 @@ Startup flow (in `app.App.run` and `app.startup`):
    successful app launches, this is also where the launch history
    gets incremented and re-saved (see
    [launch-history.md](launch-history.md)).
+7. `App.destroy` calls `state.deinit` then `gpa.destroy(self.state)`.
 
 ## Exit Codes
 

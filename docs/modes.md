@@ -293,12 +293,12 @@ of them need to know about your new mode.
 
 | File                              | Purpose                                              |
 | --------------------------------- | ---------------------------------------------------- |
-| `src/plugins/api.zig`             | The `Mode` trait, `ActiveMode`, `Trigger`, `Registry`, default no-op helpers |
+| `src/plugins/api.zig`             | The `Mode` trait, `ActiveMode`, `Trigger`, default no-op helpers |
 | `src/plugins/builtin.zig`         | All 6 built-in modes + handlers + `modeById` + public transition wrappers |
 | `src/plugins/transitions.zig`     | Generic `enterMode` + `matchesTrigger`               |
 | `src/plugins/util.zig`            | `writeStdout` + `launchDetached` (shared by mode handlers) |
 | `src/state/mode.zig`              | `AppMode = plugin.ActiveMode` re-export; `PromptConfig`, `EmojiConfig` |
-| `src/state/app_state.zig`         | `mode`, `registry`, `registered_triggers`, per-instance state, plugin-delegate methods |
+| `src/state/app_state.zig`         | `mode`, `prefixes`, `registered_triggers`, per-instance state, plugin-delegate methods. Heap-allocated. |
 | `src/core/emoji/`                 | Pre-packed binary slab + loader                      |
 | `src/ui/callbacks/text.zig`       | `onTextChanged` — single vtable call                  |
 | `src/ui/callbacks/key.zig`        | `onKeyPress` — Enter, Esc, arrows, Ctrl-W; reads `canExitToDefault` / `isCancelable` via vtable |
@@ -307,4 +307,5 @@ of them need to know about your new mode.
 | `src/app/startup.zig`             | `resolveInitialMode` (plugin lookups), `prepareInitialFrame` |
 | `src/app/cli.zig`                 | `--prompt` and `--emoji` flag parsing                |
 | `src/app/exit_code.zig`           | Id-based default exit code                           |
+| `src/app/single_instance.zig`     | Single-instance check via `app.singleInstanceEnabled()` |
 | `src/app/single_instance.zig`     | `enabled(app)` — calls `app.singleInstanceEnabled()` |
