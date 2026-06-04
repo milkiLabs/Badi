@@ -4,7 +4,6 @@
 // per-mode filter logic lives in `plugins/builtin.zig`; this file only
 // owns the Qt-facing glue (model reset, selection reset, scroll-to-row).
 
-const std = @import("std");
 const qt6 = @import("libqt6zig");
 const state = @import("../state/mod.zig");
 const status = @import("status.zig");
@@ -12,10 +11,6 @@ const status = @import("status.zig");
 /// Recompute visible rows for the current mode and query, reset the Qt
 /// model, update the no-results label, and select the first row if any.
 pub fn applyFilter(app: *state.AppState, query: []const u8) void {
-    // Prompt mode: no list, no filter. Caller may still want to record
-    // the query elsewhere; this is a no-op.
-    if (std.mem.eql(u8, app.mode.plugin.id, "prompt")) return;
-
     app.current_query.clearRetainingCapacity();
     app.current_query.appendSlice(app.allocator, query) catch {};
     app.visible_indices.clearRetainingCapacity();

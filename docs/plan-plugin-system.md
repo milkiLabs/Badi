@@ -37,20 +37,35 @@ commit on `plugin-migration`:
 
 | File | State |
 |---|---|
-| `src/plugins/api.zig` | The `Mode` trait, `ActiveMode`, `Trigger`, `Registry` types; default no-op helpers. |
+| `src/plugins/api.zig` | The `Mode` trait, `ActiveMode`, `Trigger` types; default no-op helpers. (`Registry` was removed in the cleanup pass — it was dead.) |
 | `src/plugins/builtin.zig` | All 6 built-in modes as `*const api.Mode` values + handlers; `modeById` lookup; the public transition wrappers (`exitToApps`, `enterActionMode`, `enterUrlMode`, `enterEmojiModeTrigger`) re-exported by `ui/callbacks/helpers.zig`. |
-| `src/plugins/transitions.zig` | Generic `enterMode(app, active, opts)` + `matchesTrigger` helpers. Imported by both `builtin.zig` and `helpers.zig`. |
+| `src/plugins/transitions.zig` | Generic `enterMode(app, active, opts)` + `matchesTrigger` helpers. |
 | `src/plugins/util.zig` | `writeStdout` + `launchDetached` (moved from `modes/util.zig`). |
-| `src/state/app_state.zig` | `mode: AppMode` is now `mode: plugin.ActiveMode`; `registry`, `registered_modes`, `registered_triggers`, `prompt_context`, `emoji_cli_context`, `emoji_trigger_context` fields; `hasListSource`/`hasBadge`/`badgeText`/`canExitToDefault`/`isCancelable`/`singleInstanceEnabled` methods. |
+| `src/state/app_state.zig` | Heap-allocated by `buildState` (see "AppState lifetime" below). Fields: `mode: plugin.ActiveMode`, `registered_triggers`, `prompt_context`, `emoji_cli_context`, `emoji_trigger_context`, plus the data/filter/UI plumbing. Methods: `resultCount`, `hasListSource`, `badgeText`, `emptyText`, `canExitToDefault`, `isCancelable`, `singleInstanceEnabled`, `setInputText`, `currentSelectionData`, `ensureEmojisLoaded`. |
 | `src/state/mode.zig` | `AppMode = plugin.ActiveMode` re-export. `PromptConfig` and `EmojiConfig` still defined here. |
 | `src/ui/model.zig`, `src/ui/view.zig`, `src/ui/status.zig` | Per-mode switches replaced with single vtable calls. |
 | `src/ui/callbacks/{text,key}.zig` | Mode dispatch collapsed to vtable calls. |
 | `src/ui/callbacks/helpers.zig` | Thin re-export of `plugins/builtin.zig` transition wrappers. |
-| `src/app/startup.zig` | `resolveInitialMode` uses `builtin.modeById`; populates `registry`, `registered_triggers`, and the per-instance state. |
+| `src/app/startup.zig` | `buildState` allocates and returns `*AppState`; `resolveInitialMode` uses `builtin.modeById`; populates `registered_triggers` and the per-instance state fields. |
+| `src/app/mod.zig` | `App.state: *AppState` (was value-typed pre-cleanup). `create` calls `buildState`; `run` sets the global + wires the stdin notifier; `destroy` calls `deinit` then `gpa.destroy`. |
 | `src/app/exit_code.zig` | Id-based default exit code lookup. |
 | `src/app/single_instance.zig` | `enabled(app)` calls `app.singleInstanceEnabled()`. |
 | `src/modes/` | **DELETED**. All per-mode files and `mod.zig` removed. |
 | `src/config/actions.zig` | **NOT TOUCHED**. The `Kind` enum and new fields are #23, still pending. |
+
+### AppState lifetime
+
+`AppState` is heap-allocated by `startup.buildState` and the
+pointer is held in `App.state: *AppState`. `App.destroy` frees
+it with `gpa.destroy` after `deinit`. The heap-allocation is
+load-bearing: the `ActiveMode.ctx` for the initial mode (e.g.
+`&app_state.emoji_cli_context`) and for each `registered_triggers[i]`
+entry (points at `&prefixes.items[i]`) must point at a stable
+address for the whole process. Heap allocation makes that trivial;
+the earlier "return by value and re-seat after the move" design
+was a band-aid that hid a real class of dangle bugs (see the
+"bug fix post-migration" entry in
+[plugin-migration-status.md](plugin-migration-status.md)).
 
 | File | State |
 |---|---|
@@ -164,12 +179,12 @@ pub const Trigger = struct {
     text: []const u8,
     mode: ActiveMode,
 };
-
-pub const Registry = struct {
-    modes: []const *const Mode,
-    triggers: []const Trigger,
-};
 ```
+
+(An earlier draft had a `Registry` type bundling `modes` and
+`triggers` slices; the cleanup pass removed it because no caller
+read it — modes are discovered via `builtin.modeById` and triggers
+are stored in `AppState.registered_triggers`.)
 
 The defaults:
 
@@ -428,40 +443,41 @@ out of `urlTextChanged` and into `exitToApps`.
 
 ### 8. `src/app/startup.zig`
 
-- `resolveMode(io, settings)` → `resolveInitialMode(io, settings)`. Each branch becomes a `plugin.modeById("...").?` lookup:
+- `buildState` allocates `*AppState` on the heap (so per-instance
+  ctx pointers like `&app_state.emoji_cli_context` are stable
+  for the whole process) and returns it. `App.state` is
+  `*AppState`; `App.destroy` calls `gpa.destroy(self.state)` after
+  `deinit`.
+
+- `resolveMode(io, settings)` → `resolveInitialMode(io, settings, app_state)`. Each branch becomes a `plugin.modeById("...").?` lookup with the right ctx for that mode:
 
   ```zig
   pub fn resolveInitialMode(
       io: std.Io,
       settings: App.Settings,
-      registry: *const plugin.Registry,
-  ) state.AppMode {
-      _ = registry; // currently unused; reserved for future "user-specified initial mode" config
-      if (settings.prompt) |cfg| return .{ .plugin = plugin.modeById("prompt").?, .ctx = @ptrCast(&cfg) };
-      if (settings.emoji)  |cfg| return .{ .plugin = plugin.modeById("emoji").?,  .ctx = @ptrCast(&cfg) };
+      app_state: *state.AppState,
+  ) plugin.ActiveMode {
+      if (settings.prompt != null) return .{
+          .plugin = builtin.modeById("prompt").?,
+          .ctx = @ptrCast(&app_state.prompt_context),
+      };
+      if (settings.emoji != null) return .{
+          .plugin = builtin.modeById("emoji").?,
+          .ctx = @ptrCast(&app_state.emoji_cli_context),
+      };
       const stdin = std.Io.File.stdin();
-      const stat = stdin.stat(io) catch return .{ .plugin = plugin.modeById("apps").? };
-      if (stat.kind == .named_pipe) return .{ .plugin = plugin.modeById("piped").? };
-      return .{ .plugin = plugin.modeById("apps").? };
+      const stat = stdin.stat(io) catch return .{ .plugin = builtin.modeById("apps").? };
+      if (stat.kind == .named_pipe) return .{ .plugin = builtin.modeById("piped").? };
+      return .{ .plugin = builtin.modeById("apps").? };
   }
   ```
 
-- `buildState` adds:
-  - Static registry assignment: `app_state.registry = .{ .modes = &plugin.builtin.all, .triggers = &.{} }` (the trigger slice is filled in below).
-  - Build the dynamic triggers from the loaded config:
-    ```zig
-    try app_state.registered_triggers.ensureTotalCapacity(gpa, cfg.actions.len);
-    for (cfg.actions) |action| {
-        try app_state.registered_triggers.append(gpa, .{
-            .text = action.trigger,
-            .mode = .{ .plugin = &plugin.builtin.action, .ctx = @ptrCast(&action) },
-        });
-    }
-    ```
-  - `app_state.prompt_context = settings.prompt orelse .{};` (with a sentinel default; only used when prompt is the initial mode).
-  - `app_state.emoji_cli_context = settings.emoji orelse .{ .entry = .cli };`
-  - `app_state.emoji_trigger_context = .{ .entry = .trigger };`
-  - Use the right ctx when resolving the initial mode: for the prompt mode, `ctx = &app_state.prompt_context`; for emoji (initial), `ctx = &app_state.emoji_cli_context`.
+- `buildState` populates:
+  - The per-instance state fields (`prompt_context`, `emoji_cli_context`,
+    `emoji_trigger_context`).
+  - `registered_triggers` from the loaded config; each entry's ctx
+    points at the heap-owned `prefixes.items[i]` (stable for the
+    process).
 
 - `prepareInitialFrame` switches on the active mode plugin to decide
   the first paint. Today it checks `app.mode == .piped` to install the
@@ -530,11 +546,11 @@ shape: `app.singleInstanceEnabled()`. Single call site.
 
 ### 12. `src/app/mod.zig::App.create`
 
-The `app_state` is built with `mode: undefined` (placeholder), then
-`resolveInitialMode` fills it. Today `buildState` calls
-`resolveMode` inline; same pattern after — `buildState` calls
-`resolveInitialMode`. Also, `App.create` no longer needs to import
-`plugin` directly; `AppState.registry` is populated by `buildState`.
+`buildState` returns `*AppState` (heap-allocated, stable address).
+`App.create` stores it in `App.state`. `App.run` sets
+`state.global.set(self.state)` and starts the event loop.
+`App.destroy` calls `self.state.deinit()` then
+`self.gpa.destroy(self.state)`. No two-phase init, no fixup dance.
 
 ### 13. Dead code removal
 
@@ -548,12 +564,17 @@ After the migration, these files are unused and should be deleted:
 - `src/modes/emoji.zig`
 - `src/modes/mod.zig` (replaced by `plugins/builtin.zig` + `plugins/api.zig`'s default no-op `noLaunch`)
 
-`src/modes/util.zig` stays — its `writeStdout` and `launchDetached`
-are still used by the plugin handlers.
+`src/modes/util.zig` moves to `src/plugins/util.zig` — its
+`writeStdout` and `launchDetached` are still used by the plugin
+handlers.
 
-The old `AppMode` union's `hasListSource` / `hasBadge` methods are
-already gone from the branch (moved to `AppState` as plugin delegates).
-Confirm no other call sites reference them.
+The cleanup pass also removed:
+
+- `AppState.registry: plugin.Registry` (never read)
+- `plugin.Registry` type itself (no callers)
+- `AppState.registered_modes: std.ArrayList(*const plugin.Mode)` (never populated or read)
+- `AppState.hasBadge()` (duplicate of `badgeText() != null`, never called)
+- The "prompt" early return in `view.zig::applyFilter` (the prompt mode's `has_list_source = false` already prevents the filter call)
 
 ### 14. `src/core_tests.zig`
 

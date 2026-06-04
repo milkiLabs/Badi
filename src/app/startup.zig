@@ -13,32 +13,38 @@ const builtin = @import("../plugins/builtin.zig");
 const ui = @import("../ui/mod.zig");
 const App = @import("mod.zig");
 
-/// Constructs the AppState. Resolves the initial mode, loads user-
-/// configured prefix actions, and loads the .desktop file list (in apps
-/// mode) synchronously — so the window is responsive the moment it appears.
-/// Emoji entries are allocated only when emoji mode is actually entered.
-/// Mode resolution lives here so callers see a single source of truth
-/// (`app_state.mode`); `App.run` reads it instead of resolving again.
+/// Constructs the AppState on the heap and returns the pointer.
+/// Heap-allocating (rather than returning by value) gives the state
+/// a stable address for the whole process — needed because the
+/// `ActiveMode.ctx` pointer for prefix/emoji modes points into the
+/// state itself (`&prefixes.items[i]`, `&emoji_cli_context`, etc.)
+/// and those pointers must remain valid for the duration of the
+/// event loop.
+///
+/// The caller owns the returned pointer and must call `deinit` then
+/// `gpa.destroy` (in `App.destroy`).
 pub fn buildState(
     gpa: std.mem.Allocator,
     io: std.Io,
     env: *const std.process.Environ.Map,
     widgets: state.Widgets,
     settings: App.Settings,
-) !state.AppState {
+) !*state.AppState {
+    const app_state = try gpa.create(state.AppState);
+    errdefer gpa.destroy(app_state);
+
     // Default contexts for the modes that need per-instance state. The
     // prompt_context is only used when --prompt was given; emoji_cli
     // is only used when --emoji was given; emoji_trigger is used for
     // mid-session ": " entry (always allocated, never read unless
     // the trigger fires).
-    var app_state: state.AppState = .{
+    app_state.* = .{
         .allocator = gpa,
         .io = io,
         .env = env,
         .ui = widgets,
         .single_instance_server = null,
         .mode = .{ .plugin = &builtin.apps, .ctx = null },
-        .registry = .{ .modes = &builtin.all, .triggers = &.{} },
         .exit_code = null,
         .app_list = null,
         .launch_history = core.launch_history.load(gpa, env, io),
@@ -46,7 +52,6 @@ pub fn buildState(
         .emojis = null,
         .emojis_loaded = false,
         .prefixes = .empty,
-        .registered_modes = .empty,
         .registered_triggers = .empty,
         .prompt_context = settings.prompt orelse .{
             .label = "",
@@ -87,9 +92,8 @@ pub fn buildState(
                 .action = try gpa.dupe(u8, action.action),
             };
             try app_state.prefixes.append(gpa, owned);
-            // Take the ctx pointer from the heap-owned ArrayList entry,
-            // not from the loop-local `owned` (which dangles after the
-            // loop iteration ends).
+            // The ctx pointer points at the heap-owned ArrayList entry,
+            // which lives as long as the AppState itself.
             const stable: *const config.Action = &app_state.prefixes.items[app_state.prefixes.items.len - 1];
             try app_state.registered_triggers.append(gpa, .{
                 .text = owned.trigger,
@@ -102,7 +106,7 @@ pub fn buildState(
     // those modes win unconditionally. Otherwise, stdin's stat() determines
     // piped vs apps. A real named pipe is the only signal for piped mode;
     // character devices (terminal, /dev/null) fall through to apps.
-    app_state.mode = resolveInitialMode(io, settings, &app_state);
+    app_state.mode = resolveInitialMode(io, settings, app_state);
 
     // Load .desktop apps now so the window is fully populated on first show.
     if (settings.prompt == null) {
@@ -117,18 +121,22 @@ pub fn buildState(
 /// piped vs apps. A real named pipe is the only signal for piped mode;
 /// character devices (terminal, /dev/null) fall through to apps.
 ///
-/// For `--prompt` and `--emoji`, the returned `ActiveMode.ctx` is left
-/// `null` — `App.run::fixupModeCtx` re-seats it against the final stable
-/// `AppState` location (the local `app_state` in `App.create` is moved
-/// into `App.state` when create returns, danging any pointer taken here).
+/// For `--prompt` and `--emoji`, the returned `ActiveMode.ctx` points at
+/// the corresponding per-instance state field on `app_state` (which is
+/// stable since the AppState is heap-allocated).
 pub fn resolveInitialMode(
     io: std.Io,
     settings: App.Settings,
     app_state: *state.AppState,
 ) plugin.ActiveMode {
-    _ = app_state;
-    if (settings.prompt != null) return .{ .plugin = builtin.modeById("prompt").? };
-    if (settings.emoji != null) return .{ .plugin = builtin.modeById("emoji").? };
+    if (settings.prompt != null) return .{
+        .plugin = builtin.modeById("prompt").?,
+        .ctx = @ptrCast(&app_state.prompt_context),
+    };
+    if (settings.emoji != null) return .{
+        .plugin = builtin.modeById("emoji").?,
+        .ctx = @ptrCast(&app_state.emoji_cli_context),
+    };
 
     const stdin = std.Io.File.stdin();
     const stat = stdin.stat(io) catch return .{ .plugin = builtin.modeById("apps").? };

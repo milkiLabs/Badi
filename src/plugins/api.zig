@@ -44,11 +44,6 @@ pub const Trigger = struct {
     mode: ActiveMode,
 };
 
-pub const Registry = struct {
-    modes: []const *const Mode,
-    triggers: []const Trigger,
-};
-
 pub fn defaultResultCount(_: *const anyopaque, _: Context) usize {
     return 0;
 }

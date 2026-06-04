@@ -22,7 +22,7 @@ pub const App = struct {
     io: std.Io,
     env: *const std.process.Environ.Map,
     settings: Settings,
-    state: state.AppState,
+    state: *state.AppState,
     argv: [][:0]u8,
     qapp: qt6.QApplication,
 
@@ -59,18 +59,18 @@ pub const App = struct {
 
         // AppState: resolves the initial mode, loads user actions, and
         // loads the .desktop data for non-prompt modes. Emoji entries are
-        // loaded only if emoji mode is entered. The global pointer is NOT
-        // set here — `app_state` is a local that
-        // gets moved into `self.state` when create returns, which would
-        // dangle the global. `run` sets it once `self` is in its final
-        // location.
-        var app_state = try startup.buildState(gpa, init.io, init.environ_map, widgets, settings);
+        // loaded only if emoji mode is entered. The state is heap-
+        // allocated so the per-instance ctx pointers (in the active
+        // mode and in registered_triggers) point at a stable address
+        // for the whole process.
+        const app_state = try startup.buildState(gpa, init.io, init.environ_map, widgets, settings);
         errdefer app_state.deinit();
+        errdefer gpa.destroy(app_state);
 
         // Single-instance: bind the socket so a previous instance can be
         // told to close. Only meaningful in apps or emoji mode. The mode
         // is read from app_state so we resolve it exactly once.
-        if (single_instance.enabled(&app_state)) {
+        if (single_instance.enabled(app_state)) {
             app_state.single_instance_server = try single_instance.listenReplacingExisting(init.io);
         }
 
@@ -90,16 +90,12 @@ pub const App = struct {
     /// exit code. The initial mode is resolved once in `buildState`
     /// (called from `create`) and is not re-resolved here.
     pub fn run(self: *App) u8 {
-        // Set the global now that `self` is in its final stack frame.
-        // Qt callbacks read app state through this pointer.
-        state.global.set(&self.state);
-
-        // `buildState` was called against a local `app_state` on
-        // `App.create`'s stack frame; the initial mode's `ctx` was
-        // left null for `--prompt` and `--emoji` (or dangles, for
-        // any other take-against-local site). Re-seat against the
-        // final stable location now that `self.state` is in place.
-        self.fixupModeCtx();
+        // Set the global now that `self.state` is the final pointer
+        // we want every Qt callback to read through. The state is
+        // heap-allocated (in `buildState`), so the address is stable
+        // for the whole process — including any ctx pointers that
+        // point into the state.
+        state.global.set(self.state);
 
         if (self.state.single_instance_server) |*server| {
             const notifier = qt6.QSocketNotifier.New4(
@@ -109,33 +105,20 @@ pub const App = struct {
             );
             notifier.OnActivated(ui.callbacks.onReplacementRequested);
         }
-        startup.prepareInitialFrame(&self.state, self.arena, self.settings);
+        startup.prepareInitialFrame(self.state, self.arena, self.settings);
         ui.wayland.setup(self.state.ui.main);
         self.state.ui.main.Show();
         _ = qt6.QApplication.Exec();
-        return exit_code.resolve(&self.state);
+        return exit_code.resolve(self.state);
     }
 
-    /// Re-seats the initial mode's `ctx` pointer against the final
-    /// stable `AppState` location. Called once from `run`, after the
-    /// global pointer is set. Only the two CLI-driven initial modes
-    /// (`--prompt`, `--emoji`) need this — other modes (apps, piped,
-    /// action via trigger) either have no ctx or take it against the
-    /// heap-stable `registered_triggers[i].mode.ctx` (which points at
-    /// `prefixes.items[i]`, a heap entry).
-    fn fixupModeCtx(self: *App) void {
-        if (std.mem.eql(u8, self.state.mode.plugin.id, "emoji")) {
-            self.state.mode.ctx = @ptrCast(&self.state.emoji_cli_context);
-        } else if (std.mem.eql(u8, self.state.mode.plugin.id, "prompt")) {
-            self.state.mode.ctx = @ptrCast(&self.state.prompt_context);
-        }
-    }
-
-    /// Releases resources in reverse order of allocation. The state is
-    /// deinit'd first (frees Zig-owned data), then the QApplication
-    /// (which frees all Qt-owned widgets), then the qt6 init buffer.
+    /// Releases resources in reverse order of allocation. The state's
+    /// Zig-owned data is freed first, then the AppState itself, then
+    /// the QApplication (which frees all Qt-owned widgets), then the
+    /// qt6 init buffer.
     pub fn destroy(self: *App) void {
         self.state.deinit();
+        self.gpa.destroy(self.state);
         self.qapp.Delete();
         qt6.deinit(self.gpa, self.argv);
     }

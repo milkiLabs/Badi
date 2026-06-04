@@ -20,7 +20,6 @@ const mode_mod = @import("mode.zig");
 const AppMode = mode_mod.AppMode;
 const PromptConfig = mode_mod.PromptConfig;
 const EmojiConfig = mode_mod.EmojiConfig;
-const EmojiAction = mode_mod.EmojiAction;
 
 pub const AppState = struct {
     // Core
@@ -32,7 +31,6 @@ pub const AppState = struct {
 
     // Mode
     mode: AppMode,
-    registry: plugin.Registry,
     exit_code: ?u8,
 
     // Source data
@@ -42,7 +40,6 @@ pub const AppState = struct {
     emojis: ?emoji.EmojiData,
     emojis_loaded: bool,
     prefixes: std.ArrayList(config.Action),
-    registered_modes: std.ArrayList(*const plugin.Mode),
     registered_triggers: std.ArrayList(plugin.Trigger),
     prompt_context: PromptConfig,
     emoji_cli_context: EmojiConfig,
@@ -101,11 +98,6 @@ pub const AppState = struct {
 
     pub fn hasListSource(self: *const AppState) bool {
         return self.mode.plugin.has_list_source;
-    }
-
-    pub fn hasBadge(self: *AppState) bool {
-        const callback = self.mode.plugin.badgeText orelse return false;
-        return callback(self, self.mode.ctx) != null;
     }
 
     pub fn badgeText(self: *AppState) ?[]const u8 {
@@ -180,7 +172,6 @@ pub const AppState = struct {
             self.allocator.free(p.action);
         }
         self.prefixes.deinit(self.allocator);
-        self.registered_modes.deinit(self.allocator);
         self.registered_triggers.deinit(self.allocator);
         self.current_query.deinit(self.allocator);
         self.visible_indices.deinit(self.allocator);

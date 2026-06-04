@@ -14,7 +14,7 @@
 4. `src/ui/callbacks/helpers.zig` — thin re-export of
    `plugins/builtin.zig` transition wrappers.
 5. `src/app/startup.zig::resolveInitialMode` — plugin lookups;
-   `registry` + `registered_triggers` populated.
+   `registered_triggers` populated.
 6. `src/app/exit_code.zig::resolve` — id-based default lookup.
 7. `src/app/single_instance.zig::enabled` — `app.singleInstanceEnabled()`.
 8. `src/modes/` — deleted (per-mode files and `mod.zig`); `util.zig`
@@ -24,6 +24,54 @@
     `docs/user-docs/actions.md`, `docs/plan-plugin-system.md`.
 
 `zig build` and `zig build test` pass.
+
+## Bug fix post-migration
+
+After the initial 10 commits, two latent bugs surfaced when run on
+the real binary:
+
+- `--emoji` (initial mode): `cfg.action` read as `0xfe` (corrupt
+  enum tag), panicking at `switch (cfg.action)` in
+  `emojiLaunch`.
+- `--prompt` (initial mode): `ctx.?` panicked with "attempt to use
+  null value" in `promptPtr`.
+
+Root cause: `App.create` returned `App` by value, and `App.state`
+was a value-typed `state.AppState`. The `buildState` function took
+`&app_state.emoji_cli_context` against a *local* on `App.create`'s
+stack frame, and that pointer dangles the moment the struct is
+moved into the returned `App`. The prompt case was worse: the ctx
+was never set, so it was just `null`.
+
+A third latent bug had the same shape: `buildState::registered_triggers`
+took `&owned` against a loop-local variable, which dangles when the
+loop iteration ends.
+
+The fix was to **heap-allocate the AppState** in `buildState` so the
+address is stable for the whole process. The signature is now
+`buildState(...) !*AppState` and `App.state: *AppState`. No more
+two-phase init, no more "fixup after move" dance.
+
+`App.destroy` adds `self.gpa.destroy(self.state)` after `deinit`.
+
+## Cleanup pass
+
+After the heap-alloc refactor, a small cleanup pass removed dead
+code that was never read:
+
+- `AppState.registry: plugin.Registry` field — set in `buildState`
+  but never read. The `plugin.Registry` type itself was unused
+  outside the dead field; removed.
+- `AppState.registered_modes: std.ArrayList(*const plugin.Mode)` —
+  vestigial dynamic counterpart of the static `Registry`. Never
+  populated or read. Removed.
+- `AppState.hasBadge()` method — duplicate of `badgeText() != null`
+  and never called. Removed.
+- `view.zig::applyFilter` early return for "prompt" — the prompt
+  mode's `has_list_source = false` already prevents the filter
+  call, so the id check was dead. Removed.
+- `EmojiAction` import in `app_state.zig` — only used by the
+  removed `hasBadge`. Removed.
 
 ## Remaining (3 items)
 
