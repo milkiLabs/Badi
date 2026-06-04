@@ -73,15 +73,12 @@ users override the default.
 **T-shirt**: S.
 **Touches**: `ui/factory.zig`, `config/theme.zig`.
 
-### 14. `quote-shell-arg` for prefix actions: `argv` mode
+### 14. ~~`quote-shell-arg` for prefix actions: `argv` mode~~ — **DONE as part of #23**
 
-**Why**: Right now prefix actions use `sh -c "template %s"`. Some users
-want to pass argv directly (e.g. a known program with a known arg
-shape). A second field `argv: ?[]const u8` (read as
-`argv[0] = $program, argv[1..] = $args` with `%s` substitution in each
-arg) covers it.
-**T-shirt**: S.
-**Touches**: `config/actions.zig`, `modes/prefix.zig`.
+The `argv` kind (along with `http` and `script`) is part of the
+#23 plugin system for actions. Each kind has its own `launch*`
+helper in `plugins/builtin.zig`. See
+[user-docs/actions.md](user-docs/actions.md).
 
 ### 16. New mode: `calc`
 
@@ -151,7 +148,7 @@ a 100-line inline table).
 
 These need a longer conversation before code.
 
-### 22. Plugin system for modes
+### 22. Plugin system for modes — **DONE**
 
 **Why**: Six modes is enough to feel the cost of "one more" — every
 new mode touches `state/mode.zig`, the dispatch switch, the model, the
@@ -163,11 +160,30 @@ would make the next ten modes free. The cost is runtime dispatch
 already a non-inlined function call across files, so the cost is
 already paid.
 
-### 23. Plugin system for actions
+**Status**: Landed on `plugin-migration`. The trait (`plugins/api.zig`),
+the six built-in modes (`plugins/builtin.zig`), the generic
+transition helper (`plugins/transitions.zig`), and the vtable migration
+of the 8 dispatch sites are all committed. `zig build` and
+`zig build test` pass. Adding a new mode is now a one-file change in
+`plugins/builtin.zig` (plus, for initial modes, a branch in
+`resolveInitialMode`). See [plan-plugin-system.md](plan-plugin-system.md)
+for the full design and [modes.md](modes.md) for the new "Adding a
+new mode" recipe.
+
+### 23. Plugin system for actions — **IN FLIGHT**
 
 **Why**: The `Action` struct (trigger, name, icon, shell template) is
 hardcoded to a shell template. A user might want to build a plugin that
 queries a custom API. Same vtable pattern as #22.
+
+**Status**: The mode plugin infrastructure (#22) is the foundation
+this rides on — the `action` mode is just one of the six built-in
+plugins. The remaining work is the `config.Action.Kind` enum and the
+four `launch*` helpers in `plugins/builtin.zig::actionLaunch`. See
+[plan-plugin-system.md](plan-plugin-system.md) for the schema
+proposal and the [user-docs/actions.md](user-docs/actions.md)
+end-user doc that already shows the four kinds (`shell`, `argv`,
+`http`, `script`) and their config examples.
 
 ### 24. Multi-display layer shell support
 

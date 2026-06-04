@@ -1,10 +1,10 @@
 # Plan: Plugin System for Modes (#22) and Actions (#23)
 
-> Status: in flight on branch `plugin`. Trait, registry, and built-in mode
-> definitions are committed. The work stops at the dispatch sites that
-> still reference the old `AppMode` union enum. This document is the
-> recipe for finishing the migration and adding the `config.Action`
-> extension.
+> Status: mode migration done on branch `plugin-migration`. The 8
+> dispatch sites are converted; the old per-mode files are deleted;
+> `zig build` and `zig build test` pass. The remaining work is
+> #23 (extend `config.Action` with a `kind` field and the four
+> `launch*` helpers) and the test/docs pass.
 
 ## Goals
 
@@ -31,16 +31,31 @@
 
 ## Where the branch stands now
 
-Branch `plugin` is one commit on top of `main`
-(`66f09a2 "not completed"`). That commit:
+Branch `plugin-migration` is `main` + the cherry-picked
+`plugin`-branch trait commit + the migration commits. As of the last
+commit on `plugin-migration`:
 
 | File | State |
 |---|---|
-| `src/plugins/api.zig` | **NEW** — the `Mode` trait, `ActiveMode`, `Trigger`, `Registry` types; default no-op helpers |
-| `src/plugins/builtin.zig` | **NEW** — all 6 built-in modes as `*const api.Mode` values, plus their handler functions; a `modeById` lookup |
-| `src/state/app_state.zig` | Half-converted: `mode: AppMode` is now `mode: plugin.ActiveMode`; new `registry`, `registered_modes`, `registered_triggers`, `prompt_context`, `emoji_cli_context`, `emoji_trigger_context` fields; new `hasListSource`, `hasBadge`, `badgeText`, `emptyText`, `canExitToDefault`, `isCancelable`, `singleInstanceEnabled` methods on `AppState` that delegate to the active plugin |
-| `src/state/mode.zig` | `AppMode` is now `pub const AppMode = plugin.ActiveMode;`. The `hasListSource` / `hasBadge` methods on the old union are gone — moved to `AppState` |
-| `src/modes/mod.zig`, `src/ui/**`, `src/app/**` | **NOT STARTED** — still switch on the old `AppMode` shape. The branch doesn't compile as-is because `AppMode` is no longer a tagged union. |
+| `src/plugins/api.zig` | The `Mode` trait, `ActiveMode`, `Trigger`, `Registry` types; default no-op helpers. |
+| `src/plugins/builtin.zig` | All 6 built-in modes as `*const api.Mode` values + handlers; `modeById` lookup; the public transition wrappers (`exitToApps`, `enterActionMode`, `enterUrlMode`, `enterEmojiModeTrigger`) re-exported by `ui/callbacks/helpers.zig`. |
+| `src/plugins/transitions.zig` | Generic `enterMode(app, active, opts)` + `matchesTrigger` helpers. Imported by both `builtin.zig` and `helpers.zig`. |
+| `src/plugins/util.zig` | `writeStdout` + `launchDetached` (moved from `modes/util.zig`). |
+| `src/state/app_state.zig` | `mode: AppMode` is now `mode: plugin.ActiveMode`; `registry`, `registered_modes`, `registered_triggers`, `prompt_context`, `emoji_cli_context`, `emoji_trigger_context` fields; `hasListSource`/`hasBadge`/`badgeText`/`canExitToDefault`/`isCancelable`/`singleInstanceEnabled` methods. |
+| `src/state/mode.zig` | `AppMode = plugin.ActiveMode` re-export. `PromptConfig` and `EmojiConfig` still defined here. |
+| `src/ui/model.zig`, `src/ui/view.zig`, `src/ui/status.zig` | Per-mode switches replaced with single vtable calls. |
+| `src/ui/callbacks/{text,key}.zig` | Mode dispatch collapsed to vtable calls. |
+| `src/ui/callbacks/helpers.zig` | Thin re-export of `plugins/builtin.zig` transition wrappers. |
+| `src/app/startup.zig` | `resolveInitialMode` uses `builtin.modeById`; populates `registry`, `registered_triggers`, and the per-instance state. |
+| `src/app/exit_code.zig` | Id-based default exit code lookup. |
+| `src/app/single_instance.zig` | `enabled(app)` calls `app.singleInstanceEnabled()`. |
+| `src/modes/` | **DELETED**. All per-mode files and `mod.zig` removed. |
+| `src/config/actions.zig` | **NOT TOUCHED**. The `Kind` enum and new fields are #23, still pending. |
+
+| File | State |
+|---|---|
+| `src/modes/` | **DELETED** — all per-mode files and `mod.zig` gone. Their handlers live in `plugins/builtin.zig`. |
+| `src/config/actions.zig` | **NOT YET** — the `Kind` enum and new fields are #23, still pending. |
 
 The trait the branch landed with is **good** — it solves problems my
 first plan only partially addressed. We keep it and finish the
@@ -213,10 +228,45 @@ Things I would still tweak:
   leave it for this PR and consider a `leaveTo` helper in a follow-up.
   (Same as today.)
 
-## What remains to be done (the migration)
+## What remains to be done
 
-Eight files still switch on the old `AppMode` shape and will not
-compile against the branch. They are the migration targets.
+All 8 dispatch sites are converted. `zig build` and `zig build test`
+pass. The remaining work is #23 (action kinds) and the test/docs
+pass.
+
+### 11. `src/config/actions.zig` — Action schema extension (#23)
+
+The `Action` struct gets a `Kind` enum and per-kind fields. The
+`actionLaunch` function in `plugins/builtin.zig` switches on the
+kind. See the **#23** section near the end of this file for the
+full design.
+
+### 12. Tests
+
+- Add `plugins_tests.zig` (or extend `core_tests.zig` if the trait
+  can be kept Qt-free — it can't, due to `QVariant` in
+  `displayRow`'s return type). The trait is in the same boat as
+  `ui/` and the old `modes/` (see the comment in `core_tests.zig:6`).
+  Plugins join the Qt-aware test step.
+- Coverage: `modeById` lookup, registry iteration, trigger
+  matching, the `TextResult` return contract, and (after #23) the
+  four `launch*` kind dispatchers.
+
+### 13. Docs
+
+- `docs/modes.md` — switch to the 2-file recipe; add a "Plugin API"
+  section documenting the trait.
+- `docs/roadmap.md` — move #22 to "Done". #23 stays in flight until
+  the `Kind` extension lands.
+- `docs/user-docs/actions.md` — document the four kinds (`shell`,
+  `argv`, `http`, `script`) with one example each.
+- `notes/plan.md` — one-liner: "dispatch is now a runtime vtable on
+  the active `plugin.Mode`".
+
+## Migration map (now done, for reference)
+
+Eight files switched on the old `AppMode` shape. They were the
+migration targets. All eight now route through the plugin vtable:
 
 ### 1. `src/modes/mod.zig::dispatch`
 
@@ -669,21 +719,49 @@ Four helpers (in `builtin.zig`, or a new
 - `notes/plan.md` — add a one-liner that the dispatch is now runtime vtable
 - `notes/plan-plugin-system.md` (this file)
 
-## Implementation order (single PR, but commit-by-commit compilable)
+## Implementation order (the first 10 steps are done on `plugin-migration`)
 
-1. **`src/modes/mod.zig::dispatch`** — first because it's the smallest change and proves the plugin system compiles. After this, `zig build` should succeed (the other ui/app sites still switch on the *old* `AppMode` shape; if they don't, fix the `state/mode.zig` to keep `AppMode` as the old union for one more commit).
-2. **`src/ui/model.zig`, `src/ui/view.zig`, `src/ui/status.zig`** — three small switches, all become single vtable calls. After this, the list display, filter, and no-results work for every mode via the plugin.
-3. **`src/ui/callbacks/key.zig`** — drop the two helper switches. After this, Esc/Backspace/Ctrl-W work via `canExitToDefault` / `isCancelable`.
-4. **`src/ui/callbacks/text.zig`** — collapse the if/else chain. Move the ": " trigger + URL detection + prefix matching into `appsTextChanged` in `builtin.zig`. After this, mode transitions work via `onTextChanged`.
-5. **`src/ui/callbacks/helpers.zig`** — new `enterEmojiModeTrigger`, `enterActionMode`, refactored `enterUrlMode` + `exitToApps`.
-6. **`src/app/startup.zig::resolveInitialMode`** — switch the initial-mode resolution to plugin lookups; populate `registry` and `registered_triggers`. After this, the app boots into the right mode.
-7. **`src/app/exit_code.zig::resolve`** — replace the switch with id-based default.
-8. **`src/app/single_instance.zig::enabled`** — single replacement.
-9. **Delete the old per-mode files** in `src/modes/`. Remove `src/modes/mod.zig` (the new dispatch is a one-liner that can live in `src/main.zig` or be a function on `AppState`).
-10. **`src/state/mode.zig`** — at this point, `AppMode` is fully the plugin type. Confirm the re-export still works for all the call sites that reference it.
-11. **Action schema extension (`#23`)** — add `Kind` enum, fields, defaults. Update `builtin.zig::actionLaunch` to dispatch. Add a `curl` availability check + fallback for the `http` kind.
-12. **Tests** — add `plugins_tests.zig` (or extend `core_tests.zig` if kept pure). Cover: id lookup, registry iteration, trigger matching, kind dispatch.
-13. **Docs** — `docs/modes.md` recipe, `docs/roadmap.md` move, `docs/user-docs/actions.md` kinds, `notes/plan.md` one-liner.
+The migration was broken into 10 commits, each compilable on its
+own. The current branch state is step 10.
+
+1. **`src/modes/mod.zig::dispatch`** — DONE. Single vtable call. Other
+   call sites were fixed in lockstep so the branch compiled at every
+   step.
+2. **`src/ui/model.zig`, `src/ui/view.zig`, `src/ui/status.zig`** — DONE.
+   List display, filter, and no-results now route through the plugin.
+3. **`src/ui/callbacks/key.zig`** — DONE. `canExitToDefault` /
+   `isCancelable` are vtable calls.
+4. **`src/ui/callbacks/text.zig`** — DONE. The if/else chain is one
+   vtable call. `appsTextChanged` in `plugins/builtin.zig` owns the
+   `: ` trigger + prefix trigger loop + URL detection.
+5. **`src/ui/callbacks/helpers.zig`** — DONE. The four transition
+   helpers live in `plugins/builtin.zig` (next to the static mode
+   values they reference); `helpers.zig` re-exports them. The
+   `transitions.zig` helper holds the generic `enterMode`.
+6. **`src/app/startup.zig::resolveInitialMode`** — DONE. Initial-mode
+   resolution uses `builtin.modeById`; `registry` and
+   `registered_triggers` are populated; per-instance state slots
+   (`prompt_context`, `emoji_cli_context`, `emoji_trigger_context`)
+   are filled.
+7. **`src/app/exit_code.zig::resolve`** — DONE. Id-based default
+   lookup.
+8. **`src/app/single_instance.zig::enabled`** — DONE. Single
+   `app.singleInstanceEnabled()` call.
+9. **Delete the old per-mode files** in `src/modes/` (and
+   `mod.zig`). Move `util.zig` to `plugins/util.zig`. — DONE.
+10. **`src/state/mode.zig`** — DONE. `AppMode = plugin.ActiveMode`
+    re-export; the `PromptConfig` and `EmojiConfig` structs stay
+    here.
+11. **Action schema extension (`#23`)** — TODO. Add `Kind` enum,
+    fields, defaults. Update `builtin.zig::actionLaunch` to
+    dispatch. Add a `curl` availability check + fallback for the
+    `http` kind.
+12. **Tests** — TODO. Add `plugins_tests.zig` (or extend
+    `core_tests.zig` if kept pure — it can't, due to `QVariant`).
+    Cover: id lookup, registry iteration, trigger matching, kind
+    dispatch.
+13. **Docs** — TODO. `docs/modes.md` recipe, `docs/roadmap.md` move,
+    `docs/user-docs/actions.md` kinds, `notes/plan.md` one-liner.
 
 ## Test plan
 
