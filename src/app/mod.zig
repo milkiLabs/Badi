@@ -94,6 +94,13 @@ pub const App = struct {
         // Qt callbacks read app state through this pointer.
         state.global.set(&self.state);
 
+        // `buildState` was called against a local `app_state` on
+        // `App.create`'s stack frame; the initial mode's `ctx` was
+        // left null for `--prompt` and `--emoji` (or dangles, for
+        // any other take-against-local site). Re-seat against the
+        // final stable location now that `self.state` is in place.
+        self.fixupModeCtx();
+
         if (self.state.single_instance_server) |*server| {
             const notifier = qt6.QSocketNotifier.New4(
                 server.socket.handle,
@@ -107,6 +114,21 @@ pub const App = struct {
         self.state.ui.main.Show();
         _ = qt6.QApplication.Exec();
         return exit_code.resolve(&self.state);
+    }
+
+    /// Re-seats the initial mode's `ctx` pointer against the final
+    /// stable `AppState` location. Called once from `run`, after the
+    /// global pointer is set. Only the two CLI-driven initial modes
+    /// (`--prompt`, `--emoji`) need this — other modes (apps, piped,
+    /// action via trigger) either have no ctx or take it against the
+    /// heap-stable `registered_triggers[i].mode.ctx` (which points at
+    /// `prefixes.items[i]`, a heap entry).
+    fn fixupModeCtx(self: *App) void {
+        if (std.mem.eql(u8, self.state.mode.plugin.id, "emoji")) {
+            self.state.mode.ctx = @ptrCast(&self.state.emoji_cli_context);
+        } else if (std.mem.eql(u8, self.state.mode.plugin.id, "prompt")) {
+            self.state.mode.ctx = @ptrCast(&self.state.prompt_context);
+        }
     }
 
     /// Releases resources in reverse order of allocation. The state is

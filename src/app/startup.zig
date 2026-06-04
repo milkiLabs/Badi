@@ -87,9 +87,13 @@ pub fn buildState(
                 .action = try gpa.dupe(u8, action.action),
             };
             try app_state.prefixes.append(gpa, owned);
+            // Take the ctx pointer from the heap-owned ArrayList entry,
+            // not from the loop-local `owned` (which dangles after the
+            // loop iteration ends).
+            const stable: *const config.Action = &app_state.prefixes.items[app_state.prefixes.items.len - 1];
             try app_state.registered_triggers.append(gpa, .{
                 .text = owned.trigger,
-                .mode = .{ .plugin = &builtin.action, .ctx = @ptrCast(&owned) },
+                .mode = .{ .plugin = &builtin.action, .ctx = @ptrCast(stable) },
             });
         }
     }
@@ -112,16 +116,19 @@ pub fn buildState(
 /// those modes win unconditionally. Otherwise, stdin's stat() determines
 /// piped vs apps. A real named pipe is the only signal for piped mode;
 /// character devices (terminal, /dev/null) fall through to apps.
+///
+/// For `--prompt` and `--emoji`, the returned `ActiveMode.ctx` is left
+/// `null` — `App.run::fixupModeCtx` re-seats it against the final stable
+/// `AppState` location (the local `app_state` in `App.create` is moved
+/// into `App.state` when create returns, danging any pointer taken here).
 pub fn resolveInitialMode(
     io: std.Io,
     settings: App.Settings,
     app_state: *state.AppState,
 ) plugin.ActiveMode {
-    if (settings.prompt) |_| return .{ .plugin = builtin.modeById("prompt").? };
-    if (settings.emoji) |_| return .{
-        .plugin = builtin.modeById("emoji").?,
-        .ctx = @ptrCast(&app_state.emoji_cli_context),
-    };
+    _ = app_state;
+    if (settings.prompt != null) return .{ .plugin = builtin.modeById("prompt").? };
+    if (settings.emoji != null) return .{ .plugin = builtin.modeById("emoji").? };
 
     const stdin = std.Io.File.stdin();
     const stat = stdin.stat(io) catch return .{ .plugin = builtin.modeById("apps").? };
