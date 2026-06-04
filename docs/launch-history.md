@@ -7,16 +7,17 @@ cannot overpower a clearly better textual match.
 
 ## What gets recorded
 
-A successful app launch (one that exits with code `0` from `modes/apps`)
-increments the count for that app's stable `.desktop` id. The id is
-the basename of the `.desktop` file (e.g. `firefox.desktop`), kept
-on `DesktopEntry.id` and exposed via `core.desktop.idOf`. A missing
-or empty id falls back to the display name, so the bookkeeping still
-works for entries that haven't been rewritten with an id.
+A successful app launch (one that exits with code `0` from
+`plugins/builtin.zig::appsLaunch`) increments the count for that
+app's stable `.desktop` id. The id is the basename of the `.desktop`
+file (e.g. `firefox.desktop`), kept on `DesktopEntry.id` and exposed
+via `core.desktop.idOf`. A missing or empty id falls back to the
+display name, so the bookkeeping still works for entries that haven't
+been rewritten with an id.
 
 Launches that fail (`exit_code != 0`) are **not** recorded. Cancel
 via Escape also doesn't record — only the Enter/double-click path
-through `modes/apps.launch` does.
+through `appsLaunch` does.
 
 ## Storage
 
@@ -87,7 +88,7 @@ ui/view.fillApps(non-empty query)
   └── searchMappedBoosted(... appHistoryBoost ...)
         └── sort by (text score + boost) desc
 
-modes/apps.launch (on Enter)
+appsLaunch (on Enter)
   └── util.launchDetached(...)
   └── if exit_code == 0: app.launched_app_id = selection.app_id
 
@@ -99,7 +100,7 @@ app/exit_code.resolve (after event loop)
 ```
 
 The recording happens in `exit_code.resolve` rather than in
-`modes/apps.launch` so that the increment is observed exactly once
+`appsLaunch` so that the increment is observed exactly once
 per Badi invocation, regardless of how the user closes the window
 (Enter, double-click, or programmatic close after a successful
 launch).
