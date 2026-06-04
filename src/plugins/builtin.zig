@@ -6,9 +6,11 @@ const config = @import("../config/mod.zig");
 const core = @import("../core/mod.zig");
 const url_util = @import("../utils/url.zig");
 const mode_util = @import("../modes/util.zig");
+const transitions = @import("transitions.zig");
 
 const placeholder_token = "%s";
 const https_prefix = "https://";
+const emoji_trigger = ": ";
 
 pub const apps = api.Mode{
     .id = "apps",
@@ -21,6 +23,7 @@ pub const apps = api.Mode{
     .displayRow = appsDisplayRow,
     .filter = appsFilter,
     .launch = appsLaunch,
+    .onTextChanged = appsTextChanged,
     .singleInstance = true,
 };
 
@@ -453,9 +456,7 @@ fn promptFilter(app_opaque: *anyopaque, _: api.Context, query: []const u8) void 
 fn urlTextChanged(app_opaque: *anyopaque, _: api.Context, query: []const u8) api.TextResult {
     const app = appPtr(app_opaque);
     if (!url_util.isUrl(query)) {
-        app.mode = .{ .plugin = &apps };
-        app.ui.badge.Hide();
-        app.ui.input.SetPlaceholderText(apps.placeholder);
+        transitions.enterMode(app, .{ .plugin = &apps }, .{});
     }
     return .continue_filter;
 }
@@ -477,4 +478,69 @@ fn emojiCanExitToDefault(app_opaque: *const anyopaque, ctx: api.Context) bool {
 fn emojiIsCancelable(app_opaque: *const anyopaque, ctx: api.Context) bool {
     _ = constAppPtr(app_opaque);
     return emojiPtr(ctx).entry == .cli;
+}
+
+fn appsTextChanged(app_opaque: *anyopaque, _: api.Context, query: []const u8) api.TextResult {
+    const app = appPtr(app_opaque);
+
+    // Hardcoded ": " emoji trigger (cheap, no allocation).
+    if (std.mem.eql(u8, query, emoji_trigger)) {
+        transitions.enterMode(app, .{
+            .plugin = &emoji,
+            .ctx = &app.emoji_trigger_context,
+        }, .{ .re_filter = true });
+        return .handled;
+    }
+
+    // User-configured prefix triggers.
+    for (app.registered_triggers.items) |trigger| {
+        if (transitions.matchesTrigger(query, trigger.text)) {
+            transitions.enterMode(app, trigger.mode, .{
+                .clear_input = true,
+                .re_filter = true,
+            });
+            return .handled;
+        }
+    }
+
+    // URL auto-detect.
+    if (url_util.isUrl(query)) {
+        transitions.enterMode(app, .{ .plugin = &url }, .{});
+        return .continue_filter;
+    }
+
+    return .continue_filter;
+}
+
+// --- Public transition wrappers used by ui/callbacks/helpers.zig ---
+
+/// Resets the app to apps mode: hide the badge, restore the apps
+/// placeholder, re-filter with an empty query. Used when leaving
+/// prefix/url/emoji mode (backspace to empty input, Escape, Ctrl-W).
+pub fn exitToApps(app: *state.AppState) void {
+    transitions.enterMode(app, .{ .plugin = &apps }, .{ .re_filter = true });
+}
+
+/// Enters a prefix action mode (one of the configured triggers in
+/// `app.registered_triggers`). The mode's badge text is whatever its
+/// `badgeText` handler returns.
+pub fn enterActionMode(app: *state.AppState, active: api.ActiveMode) void {
+    transitions.enterMode(app, active, .{
+        .clear_input = true,
+        .re_filter = true,
+    });
+}
+
+/// Enters URL mode (auto-detected from typed text).
+pub fn enterUrlMode(app: *state.AppState) void {
+    transitions.enterMode(app, .{ .plugin = &url }, .{});
+}
+
+/// Enters emoji mode via the mid-session ": " trigger. The plugin's
+/// `beforeEnter` hook handles the lazy load and aborts on failure.
+pub fn enterEmojiModeTrigger(app: *state.AppState) void {
+    transitions.enterMode(app, .{
+        .plugin = &emoji,
+        .ctx = &app.emoji_trigger_context,
+    }, .{ .re_filter = true });
 }

@@ -70,7 +70,7 @@ pub const App = struct {
         // Single-instance: bind the socket so a previous instance can be
         // told to close. Only meaningful in apps or emoji mode. The mode
         // is read from app_state so we resolve it exactly once.
-        if (single_instance.enabled(app_state.mode)) {
+        if (single_instance.enabled(&app_state)) {
             app_state.single_instance_server = try single_instance.listenReplacingExisting(init.io);
         }
 

@@ -1,11 +1,12 @@
 // View layer: filter the source, drive selection, scroll. Wraps the pure
 // `core.filter` step with the Qt model-reset boilerplate. Anything that
-// says "what rows is the user looking at right now?" goes here.
+// says "what rows is the user looking at right now?" goes here. The
+// per-mode filter logic lives in `plugins/builtin.zig`; this file only
+// owns the Qt-facing glue (model reset, selection reset, scroll-to-row).
 
 const std = @import("std");
 const qt6 = @import("libqt6zig");
 const state = @import("../state/mod.zig");
-const core = @import("../core/mod.zig");
 const status = @import("status.zig");
 
 /// Recompute visible rows for the current mode and query, reset the Qt
@@ -13,7 +14,7 @@ const status = @import("status.zig");
 pub fn applyFilter(app: *state.AppState, query: []const u8) void {
     // Prompt mode: no list, no filter. Caller may still want to record
     // the query elsewhere; this is a no-op.
-    if (app.mode == .prompt) return;
+    if (std.mem.eql(u8, app.mode.plugin.id, "prompt")) return;
 
     app.current_query.clearRetainingCapacity();
     app.current_query.appendSlice(app.allocator, query) catch {};
@@ -21,7 +22,9 @@ pub fn applyFilter(app: *state.AppState, query: []const u8) void {
     app.piped_visible_scores.clearRetainingCapacity();
     app.selected_index = null;
 
-    fillVisibleIndices(app, query);
+    if (app.mode.plugin.has_list_source) {
+        app.mode.plugin.filter(app, app.mode.ctx, query);
+    }
 
     const has_results = app.resultCount() > 0;
     if (has_results) app.selected_index = 0;
@@ -31,115 +34,6 @@ pub fn applyFilter(app: *state.AppState, query: []const u8) void {
 
     status.updateNoResults(app);
     if (has_results) selectModelRow(app, 0);
-}
-
-fn fillVisibleIndices(app: *state.AppState, query: []const u8) void {
-    switch (app.mode) {
-        .apps => fillApps(app, query),
-        .piped => fillPiped(app, query),
-        .emoji => fillFor(core.emoji.EmojiEntry, core.emoji.searchableOf, app.emojiEntries(), app, query),
-        .prefix, .url, .prompt => {}, // synthetic single row in model.zig, or no list
-    }
-}
-
-fn fillApps(app: *state.AppState, query: []const u8) void {
-    const source = app.apps();
-    if (source.len == 0) return;
-
-    app.visible_indices.ensureTotalCapacity(app.allocator, source.len) catch return;
-
-    const scratch = app.allocator.alloc(core.search.ScoredItem, source.len) catch return;
-    defer app.allocator.free(scratch);
-
-    const n = if (query.len == 0) rankAppsByHistory(app, source, scratch) else core.search.searchMappedBoosted(
-        core.desktop.DesktopEntry,
-        core.desktop.nameOf,
-        appHistoryBoost,
-        &app.launch_history,
-        source,
-        query,
-        scratch,
-    );
-
-    for (scratch[0..n]) |item| {
-        app.visible_indices.appendAssumeCapacity(item.index);
-    }
-}
-
-fn rankAppsByHistory(app: *state.AppState, source: []const core.desktop.DesktopEntry, out: []core.search.ScoredItem) usize {
-    const n = @min(source.len, out.len);
-    for (source[0..n], 0..) |entry, i| {
-        out[i] = .{ .index = i, .score = app.launch_history.boost(core.desktop.idOf(entry)) };
-    }
-    core.search.sortScored(out[0..n]);
-    return n;
-}
-
-fn appHistoryBoost(ctx: *const anyopaque, entry: core.desktop.DesktopEntry) i64 {
-    const history: *const core.launch_history.History = @ptrCast(@alignCast(ctx));
-    return history.boost(core.desktop.idOf(entry));
-}
-
-fn fillPiped(app: *state.AppState, query: []const u8) void {
-    const source = app.piped_items.items;
-    if (source.len == 0) return;
-
-    app.visible_indices.ensureTotalCapacity(app.allocator, source.len) catch return;
-
-    if (query.len == 0) {
-        for (0..source.len) |i| {
-            app.visible_indices.appendAssumeCapacity(i);
-        }
-        return;
-    }
-
-    app.piped_visible_scores.ensureTotalCapacity(app.allocator, source.len) catch return;
-
-    const scratch = app.allocator.alloc(core.search.ScoredItem, source.len) catch return;
-    defer app.allocator.free(scratch);
-
-    const n = core.search.searchMapped([]const u8, identityStr, source, query, scratch);
-    for (scratch[0..n]) |item| {
-        app.visible_indices.appendAssumeCapacity(item.index);
-        app.piped_visible_scores.appendAssumeCapacity(item.score);
-    }
-}
-
-/// Generic helper: writes filtered indices directly into `visible_indices`.
-/// Empty query → zero heap allocs (enumerate in place).
-/// Non-empty query → one heap alloc (ScoredItem scratch buffer).
-fn fillFor(
-    comptime T: type,
-    comptime getText: fn (T) []const u8,
-    source: []const T,
-    app: *state.AppState,
-    query: []const u8,
-) void {
-    if (source.len == 0) return;
-
-    // Grow visible_indices once to fit the worst case (all items match).
-    app.visible_indices.ensureTotalCapacity(app.allocator, source.len) catch return;
-
-    if (query.len == 0) {
-        // Source order, no scoring, zero heap allocations.
-        for (0..source.len) |i| {
-            app.visible_indices.appendAssumeCapacity(i);
-        }
-        return;
-    }
-
-    // One heap allocation: the scratch buffer for scoring + sorting.
-    const scratch = app.allocator.alloc(core.search.ScoredItem, source.len) catch return;
-    defer app.allocator.free(scratch);
-
-    // Write directly into visible_indices' backing memory.
-    const out = app.visible_indices.allocatedSlice();
-    const n = core.filter.filter(T, getText, source, query, out, scratch);
-    app.visible_indices.items.len = n;
-}
-
-fn identityStr(s: []const u8) []const u8 {
-    return s;
 }
 
 /// Move selection by `direction` (negative = up). Wraps around.

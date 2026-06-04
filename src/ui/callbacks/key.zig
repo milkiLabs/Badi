@@ -1,8 +1,9 @@
 // Key-press callback. Maps the four-arrow-keys + Enter + Escape + Ctrl-W
 // + Backspace set onto the active mode. Mode-aware Backspace/Ctrl-W
-// exits prefix/url mode when the input is empty.
+// exits to apps when the input is empty and the active mode opts in
+// (`canExitToDefault`). Escape's exit-code-1 path is opt-in per mode
+// via `isCancelable`.
 
-const std = @import("std");
 const qt6 = @import("libqt6zig");
 const state = @import("../../state/mod.zig");
 const modes = @import("../../modes/mod.zig");
@@ -18,10 +19,11 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
     const ctrl = (event.Modifiers() & km.ControlModifier) != 0;
 
     if (key == qk.Key_Escape) {
-        if (canExitToApps(app.mode)) {
+        if (app.canExitToDefault()) {
             helpers.exitToApps(app);
-        } else if (isCancelable(app.mode)) {
-            // Escape cancels the prompt/emoji/pipe — exit code 1 signals "no answer".
+        } else if (app.isCancelable()) {
+            // Escape cancels the prompt/piped/emoji(--cli) modes — exit
+            // code 1 signals "no answer".
             app.exit_code = 1;
             _ = app.ui.main.Close();
         } else {
@@ -56,29 +58,6 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
     }
 }
 
-/// True if the current mode is one of the "back to apps" mid-session modes
-/// (prefix/url/emoji entered via the ": " trigger). Used by Escape,
-/// Backspace, and Ctrl-W to decide whether to drop back to apps or close
-/// the window. Emoji mode entered via --emoji does not count — Esc
-/// closes the app (see `isCancelable`).
-fn canExitToApps(mode: state.AppMode) bool {
-    return switch (mode) {
-        .prefix, .url => true,
-        .emoji => |cfg| cfg.entry == .trigger,
-        else => false,
-    };
-}
-
-/// True if the current mode is canceled by Esc/Backspace/Ctrl-W with
-/// exit code 1. Currently prompt, piped, and emoji-launched-via-CLI.
-fn isCancelable(mode: state.AppMode) bool {
-    return switch (mode) {
-        .prompt, .piped => true,
-        .emoji => |cfg| cfg.entry == .cli,
-        else => false,
-    };
-}
-
 /// Returns true and frees the temporary buffer if the input field is empty.
 fn inputIsEmpty(self: qt6.QLineEdit, app: *state.AppState) bool {
     const text = self.Text(app.allocator);
@@ -92,6 +71,6 @@ fn inputIsEmpty(self: qt6.QLineEdit, app: *state.AppState) bool {
 /// whether the key was consumed.
 fn tryExitOnEmpty(self: qt6.QLineEdit, app: *state.AppState) bool {
     if (!inputIsEmpty(self, app)) return false;
-    if (canExitToApps(app.mode)) helpers.exitToApps(app);
+    if (app.canExitToDefault()) helpers.exitToApps(app);
     return true;
 }

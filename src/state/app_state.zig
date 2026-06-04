@@ -104,8 +104,8 @@ pub const AppState = struct {
     }
 
     pub fn hasBadge(self: *AppState) bool {
-        if (self.mode.plugin.badgeText) |badgeText| return badgeText(self, self.mode.ctx) != null;
-        return false;
+        const callback = self.mode.plugin.badgeText orelse return false;
+        return callback(self, self.mode.ctx) != null;
     }
 
     pub fn badgeText(self: *AppState) ?[]const u8 {

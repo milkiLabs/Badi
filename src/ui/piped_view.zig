@@ -16,7 +16,7 @@ const view = @import("view.zig");
 pub fn appendPipedItem(app: *state.AppState, line: []const u8) !void {
     errdefer app.allocator.free(line);
     try app.piped_items.append(app.allocator, line);
-    if (app.mode != .piped) return;
+    if (!std.mem.eql(u8, app.mode.plugin.id, "piped")) return;
 
     const query = app.current_query.items;
     const source_index = app.piped_items.items.len - 1;
@@ -52,7 +52,7 @@ pub fn appendPipedItem(app: *state.AppState, line: []const u8) !void {
 /// to call when nothing changed (the model reset is a no-op if the row
 /// count is the same).
 pub fn renderPipedAppendBatch(app: *state.AppState) void {
-    if (app.mode != .piped) return;
+    if (!std.mem.eql(u8, app.mode.plugin.id, "piped")) return;
 
     app.ui.model.BeginResetModel();
     app.ui.model.EndResetModel();

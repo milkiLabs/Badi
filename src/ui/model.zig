@@ -1,9 +1,9 @@
 // Qt model adapter: the two C-ABI callbacks Qt invokes to populate the
 // list. This is a thin shim — it reads from `state.global.assertGet()`
-// and returns the right `QVariant` for the requested (row, role). All real
-// logic (which row, what text) lives in `view.zig` and the per-mode files.
+// and returns the `QVariant` produced by the active mode's `displayRow`
+// handler. All real logic (which row, what text) lives in
+// `plugins/builtin.zig` and the per-mode files.
 
-const std = @import("std");
 const qt6 = @import("libqt6zig");
 const state = @import("../state/mod.zig");
 
@@ -15,7 +15,7 @@ pub fn onModelRowCount(_: qt6.QAbstractListModel, parent: qt6.QModelIndex) callc
     if (parent.IsValid()) return 0;
 
     const app = state.global.assertGet();
-    return @intCast(app.resultCount());
+    return @intCast(app.mode.plugin.resultCount(app, app.mode.ctx));
 }
 
 /// Returns the cell data for a (row, role) query. Returns an empty
@@ -27,43 +27,5 @@ pub fn onModelData(_: qt6.QAbstractListModel, index: qt6.QModelIndex, role: i32)
     if (row < 0) return qt6.QVariant.New();
 
     const app = state.global.assertGet();
-    return switch (app.mode) {
-        .apps => {
-            const src = sourceIndexFromRow(app, row) orelse return qt6.QVariant.New();
-            return qt6.QVariant.New24(app.apps()[src].name);
-        },
-        .piped => {
-            const src = sourceIndexFromRow(app, row) orelse return qt6.QVariant.New();
-            return qt6.QVariant.New24(app.piped_items.items[src]);
-        },
-        .emoji => emojiRow(app, row),
-        .prefix => |cfg| syntheticRow(app, row, "Run {s}: {s}", .{ cfg.name, app.current_query.items }),
-        .url => syntheticRow(app, row, "Open in browser: {s}", .{app.current_query.items}),
-        .prompt => qt6.QVariant.New(),
-    };
-}
-
-fn emojiRow(app: *state.AppState, row: i32) qt6.QVariant {
-    const src = sourceIndexFromRow(app, row) orelse return qt6.QVariant.New();
-    const e = app.emojiEntries()[src];
-    // Format as "🚀  rocket" — glyph, two-space gutter, name. The font
-    // falls back to the system color-emoji font for the glyph span and
-    // to the configured text font for the name.
-    const text = std.fmt.allocPrint(app.allocator, "{s}  {s}", .{ e.glyph, e.name }) catch return qt6.QVariant.New();
-    defer app.allocator.free(text);
-    return qt6.QVariant.New24(text);
-}
-
-fn sourceIndexFromRow(app: *state.AppState, row: i32) ?usize {
-    if (row < 0) return null;
-    const idx: usize = @intCast(row);
-    if (idx >= app.visible_indices.items.len) return null;
-    return app.visible_indices.items[idx];
-}
-
-fn syntheticRow(app: *state.AppState, row: i32, comptime fmt: []const u8, args: anytype) qt6.QVariant {
-    if (row != 0 or app.current_query.items.len == 0) return qt6.QVariant.New();
-    const text = std.fmt.allocPrint(app.allocator, fmt, args) catch return qt6.QVariant.New();
-    defer app.allocator.free(text);
-    return qt6.QVariant.New24(text);
+    return app.mode.plugin.displayRow(app, app.mode.ctx, row);
 }

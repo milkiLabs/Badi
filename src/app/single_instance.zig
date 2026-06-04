@@ -1,13 +1,14 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const state = @import("../state/mod.zig");
 
 const replace_retry_count = 50;
 const replace_retry_delay =
     std.Io.Duration.fromMilliseconds(20);
 
-pub fn enabled(mode: anytype) bool {
+pub fn enabled(app: *state.AppState) bool {
     if (builtin.os.tag != .linux) return false;
-    return mode == .apps or mode == .emoji;
+    return app.singleInstanceEnabled();
 }
 
 pub fn listenReplacingExisting(io: std.Io) !std.Io.net.Server {

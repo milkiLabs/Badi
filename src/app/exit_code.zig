@@ -12,12 +12,21 @@ const state = @import("../state/mod.zig");
 /// closed normally). Emoji is grouped with piped/prompt because the user
 /// explicitly invoked a sub-mode — closing without picking is a cancel.
 pub fn resolve(app: *state.AppState) u8 {
-    const code: u8 = app.exit_code orelse switch (app.mode) {
-        .piped, .prompt, .emoji => 1,
-        .apps, .prefix, .url => 0,
-    };
+    const code: u8 = app.exit_code orelse defaultExitCode(app.mode.plugin);
     if (code == 0) recordSuccessfulAppLaunch(app);
     return code;
+}
+
+/// Per-mode default exit code. The set of "cancelled" modes
+/// (piped/prompt/emoji) gets 1; everything else gets 0. Encoded by id
+/// so we don't have to add a `default_exit_code: u8` field to the
+/// plugin trait for this PR.
+fn defaultExitCode(mode: *const @import("../plugins/api.zig").Mode) u8 {
+    const id = mode.id;
+    if (std.mem.eql(u8, id, "piped")) return 1;
+    if (std.mem.eql(u8, id, "prompt")) return 1;
+    if (std.mem.eql(u8, id, "emoji")) return 1;
+    return 0;
 }
 
 fn recordSuccessfulAppLaunch(app: *state.AppState) void {
