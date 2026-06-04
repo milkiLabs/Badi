@@ -6,7 +6,6 @@
 
 const qt6 = @import("libqt6zig");
 const state = @import("../../state/mod.zig");
-const modes = @import("../../modes/mod.zig");
 const view = @import("../view.zig");
 const helpers = @import("helpers.zig");
 
@@ -31,7 +30,7 @@ pub fn onKeyPress(self: qt6.QLineEdit, event: qt6.QKeyEvent) callconv(.c) void {
         }
         event.Accept();
     } else if (key == qk.Key_Return or key == qk.Key_Enter) {
-        modes.dispatch(app);
+        app.mode.plugin.launch(app, app.mode.ctx);
         event.Accept();
     } else if (key == qk.Key_Up) {
         view.selectRelative(app, -1);

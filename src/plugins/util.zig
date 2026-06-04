@@ -1,6 +1,7 @@
-// Shared helpers for the per-mode launch functions. Anything that more
-// than one mode needs (currently `writeStdout` and `launchDetached`) lives
-// here so the per-mode files stay focused on their own dispatch logic.
+// Shared helpers for the plugin launch functions. Anything that more
+// than one plugin needs (currently `writeStdout` and `launchDetached`)
+// lives here so the per-mode handlers in `builtin.zig` stay focused
+// on their own dispatch logic.
 
 const std = @import("std");
 const qt6 = @import("libqt6zig");
@@ -27,8 +28,7 @@ pub fn writeStdout(app: *state.AppState, comptime fmt: []const u8, args: anytype
 ///
 /// This is the single place the `StartDetached22` bool return gets
 /// honored, so adding a new detached-launch mode is a one-liner that
-/// can't accidentally regress to "exit 0 on missing binary" the way
-/// `apps.zig`, `prefix.zig`, and `url.zig` did before.
+/// can't accidentally regress to "exit 0 on missing binary".
 pub fn launchDetached(app: *state.AppState, program: []const u8, args: []const []const u8) void {
     if (qt6.QProcess.StartDetached22(app.allocator, program, args)) {
         app.exit_code = 0;

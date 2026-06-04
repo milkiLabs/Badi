@@ -5,7 +5,7 @@ const state = @import("../state/mod.zig");
 const config = @import("../config/mod.zig");
 const core = @import("../core/mod.zig");
 const url_util = @import("../utils/url.zig");
-const mode_util = @import("../modes/util.zig");
+const mode_util = @import("util.zig");
 const transitions = @import("transitions.zig");
 
 const placeholder_token = "%s";
