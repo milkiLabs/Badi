@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const core = @import("../core/mod.zig");
+const plugin = @import("../plugins/api.zig");
 const state = @import("../state/mod.zig");
 
 /// Returns the process exit code. If the user selected something, the
@@ -21,7 +22,7 @@ pub fn resolve(app: *state.AppState) u8 {
 /// (piped/prompt/emoji) gets 1; everything else gets 0. Encoded by id
 /// so we don't have to add a `default_exit_code: u8` field to the
 /// plugin trait for this PR.
-fn defaultExitCode(mode: *const @import("../plugins/api.zig").Mode) u8 {
+fn defaultExitCode(mode: *const plugin.Mode) u8 {
     const id = mode.id;
     if (std.mem.eql(u8, id, "piped")) return 1;
     if (std.mem.eql(u8, id, "prompt")) return 1;

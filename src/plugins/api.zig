@@ -53,5 +53,3 @@ pub fn emptyDisplayRow(_: *anyopaque, _: Context, _: i32) qt6.QVariant {
 }
 
 pub fn noFilter(_: *anyopaque, _: Context, _: []const u8) void {}
-
-pub fn noLaunch(_: *anyopaque, _: Context) void {}

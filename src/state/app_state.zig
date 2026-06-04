@@ -96,10 +96,6 @@ pub const AppState = struct {
         return self.mode.plugin.resultCount(self, self.mode.ctx);
     }
 
-    pub fn hasListSource(self: *const AppState) bool {
-        return self.mode.plugin.has_list_source;
-    }
-
     pub fn badgeText(self: *AppState) ?[]const u8 {
         const callback = self.mode.plugin.badgeText orelse return null;
         return callback(self, self.mode.ctx);
