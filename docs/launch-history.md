@@ -133,6 +133,6 @@ hide behind the comptime interface. See
 | `src/core/search.zig`           | `searchMappedBoosted`, `sortScored` (generic ranking)         |
 | `src/app/startup.zig`           | `launch_history.load(...)` wired into `AppState`              |
 | `src/app/exit_code.zig`         | `recordSuccessfulAppLaunch` (single write site)               |
-| `src/modes/apps.zig`            | Sets `app.launched_app_id` after a successful launch          |
+| `src/plugins/builtin.zig`       | `appsLaunch` — sets `app.launched_app_id` after a successful launch |
 | `src/state/app_state.zig`       | `launch_history`, `launched_app_id` fields                    |
 | `src/ui/view.zig`               | `fillApps`, `rankAppsByHistory`, `appHistoryBoost`           |

@@ -194,8 +194,11 @@ pub fn emptyDisplayRow(_: *anyopaque, _: Context, _: i32) qt6.QVariant {
     return qt6.QVariant.New();
 }
 pub fn noFilter(_: *anyopaque, _: Context, _: []const u8) void {}
-pub fn noLaunch(_: *anyopaque, _: Context) void {}
 ```
+
+(`launch` is a required field with no default — there's no `noLaunch`
+helper because every mode that registers must provide one. The cleanup
+pass removed the dead helper.)
 
 ## Why this design is good (and what the first plan missed)
 
